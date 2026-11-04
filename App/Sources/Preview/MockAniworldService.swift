@@ -143,6 +143,7 @@ extension View {
             .environment(env.settings)
             .environment(env.playback)
             .environment(env.sync)
+            .environment(env.downloads)
             .environment(\.aniworld, env.service)
             .preferredColorScheme(.dark)
     }

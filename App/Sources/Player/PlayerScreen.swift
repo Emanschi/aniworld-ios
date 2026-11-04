@@ -11,6 +11,7 @@ struct PlayerScreen: View {
     @Environment(PlaybackCoordinator.self) private var playback
     @Environment(LibraryStore.self) private var library
     @Environment(SettingsStore.self) private var settings
+    @Environment(DownloadManager.self) private var downloads
     @Environment(\.aniworld) private var service
     @Environment(\.scenePhase) private var scenePhase
 
@@ -28,7 +29,8 @@ struct PlayerScreen: View {
         .task {
             guard viewModel == nil else { return }
             let vm = PlayerViewModel(session: session)
-            vm.attach(service: service, library: library, settings: settings, coordinator: playback)
+            vm.attach(service: service, library: library, settings: settings, coordinator: playback,
+                      downloads: downloads)
             viewModel = vm
             vm.start()
         }

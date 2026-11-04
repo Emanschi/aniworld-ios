@@ -3,6 +3,7 @@ import AniworldKit
 
 @main
 struct AniworldApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var env = AppEnvironment.live()
 
     var body: some Scene {
@@ -12,6 +13,7 @@ struct AniworldApp: App {
                 .environment(env.settings)
                 .environment(env.playback)
                 .environment(env.sync)
+                .environment(env.downloads)
                 .environment(\.aniworld, env.service)
                 .preferredColorScheme(.dark)
         }
@@ -26,6 +28,7 @@ struct AppEnvironment {
     let settings: SettingsStore
     let playback: PlaybackCoordinator
     let sync: LibrarySyncService
+    let downloads: DownloadManager
 
     static func live() -> AppEnvironment {
         make(service: AniworldClient())
@@ -37,7 +40,8 @@ struct AppEnvironment {
         return AppEnvironment(
             service: service, library: library, settings: settings,
             playback: PlaybackCoordinator(service: service, library: library, settings: settings),
-            sync: LibrarySyncService(library: library)
+            sync: LibrarySyncService(library: library),
+            downloads: DownloadManager(service: service, settings: settings)
         )
     }
 }
