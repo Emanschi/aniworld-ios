@@ -1,0 +1,11 @@
+.build/
+.swiftpm/
+*.xcodeproj/
+*.xcworkspace/
+!*.xcodeproj/project.xcworkspace/
+DerivedData/
+build/
+*.ipa
+App/Info.plist
+.DS_Store
+Package.resolved.orig
