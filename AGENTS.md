@@ -35,6 +35,16 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 - Die GPL-Hinweise der App (Copyright, Gewährleistungsausschluss, Link zum Quellcode) und der
   Haftungsausschluss in der Lizenzen-Ansicht bleiben immer erhalten.
 
+## Patchnotes (immer!)
+
+- Jede für Nutzer sichtbare Änderung (neue Funktion, Bugfix, geändertes Verhalten) bekommt **im selben
+  Commit** einen kurzen Eintrag auf Deutsch in `App/Resources/PatchNotes.json`, im obersten Eintrag
+  (aktuelle bzw. nächste Version). Gibt es für die nächste Version noch keinen Eintrag, oben einen neuen
+  anlegen.
+- Kurz und verständlich für Nutzer schreiben (ein Satz pro Punkt), keine Dateinamen oder Interna.
+- Rein interne Änderungen (Refactoring, Doku, Tests) brauchen keinen Eintrag.
+- Die App zeigt diese Notizen nach jedem Update einmal beim ersten Start als Popup an.
+
 ## Projekt
 
 - iOS-Port von [dxmoc/aniworld-cli](https://github.com/dxmoc/aniworld-cli), Lizenz GPL-3.0.
