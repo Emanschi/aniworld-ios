@@ -4,6 +4,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(PlaybackCoordinator.self) private var playback
     @Environment(LibrarySyncService.self) private var sync
+    @Environment(EpisodeWatcher.self) private var watcher
     @Environment(\.scenePhase) private var scenePhase
     @State private var updates = AppUpdateChecker.shared
     @State private var patchNotes: PatchNotesPayload?
@@ -13,6 +14,7 @@ struct RootView: View {
     var body: some View {
         @Bindable var playback = playback
         @Bindable var sync = sync
+        @Bindable var watcher = watcher
         TabView {
             HomeView()
                 .tabItem { Label("Start", systemImage: "house.fill") }
@@ -46,6 +48,16 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.25), value: updates.shouldShowBanner)
         .sheet(item: $patchNotes) { (payload: PatchNotesPayload) in
             PatchNotesSheet(entries: payload.entries)
+        }
+        .sheet(item: $watcher.pendingOpenSeries) { (series: SeriesSummary) in
+            NavigationStack {
+                SeriesDetailView(series: series)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Schließen") { watcher.pendingOpenSeries = nil }
+                        }
+                    }
+            }
         }
         .task {
             sync.start()

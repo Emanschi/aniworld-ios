@@ -82,30 +82,45 @@ enum PatchNotesStore {
         return entries
     }
 
-    /// Returns the entries to show once after an update, and records the current build as seen.
-    /// Fresh install (nothing stored) -> stores silently and returns nil.
+    private static let seenNotesKey = "patchnotes.seenNotes"
+
+    /// Returns the notes not seen yet (only the new lines, grouped by version) and marks all as seen.
+    /// Works per note instead of per build, so CI builds without new notes show nothing.
+    /// Fresh install (nothing stored) -> marks everything as seen and returns nil.
     @MainActor
     static func consumePendingNotes() -> [PatchNoteEntry]? {
         let defaults = UserDefaults.standard
-        let build: String = AppVersion.build
-        let version: String = AppVersion.version
-        let lastBuild: String? = defaults.string(forKey: lastBuildKey)
-        let lastVersion: String? = defaults.string(forKey: lastVersionKey)
-
-        defaults.set(build, forKey: lastBuildKey)
-        defaults.set(version, forKey: lastVersionKey)
-
-        guard let lastBuild = lastBuild else { return nil }
-        guard lastBuild != build else { return nil }
-
         let all: [PatchNoteEntry] = loadAll()
-        guard let newest: PatchNoteEntry = all.first else { return nil }
-
-        if let lastVersion = lastVersion, lastVersion != version {
-            let newer: [PatchNoteEntry] = all.filter { SemanticVersion.isNewer($0.version, than: lastVersion) }
-            if !newer.isEmpty { return newer }
+        let keys: [String] = all.flatMap { (entry: PatchNoteEntry) -> [String] in
+            entry.notes.map { (note: String) -> String in entry.version + "|" + note }
         }
-        return [newest]
+        // Installs that already used the build-based variant count as "not fresh".
+        let wasInstalled: Bool = defaults.stringArray(forKey: seenNotesKey) != nil
+            || defaults.string(forKey: lastBuildKey) != nil
+            || hasExistingLibrary()
+        let seen: Set<String> = Set(defaults.stringArray(forKey: seenNotesKey) ?? [])
+        defaults.set(Array(seen.union(keys)), forKey: seenNotesKey)
+        defaults.set(AppVersion.build, forKey: lastBuildKey)
+        defaults.set(AppVersion.version, forKey: lastVersionKey)
+        guard wasInstalled else { return nil }
+
+        var result: [PatchNoteEntry] = []
+        for entry in all {
+            let fresh: [String] = entry.notes.filter { (note: String) -> Bool in
+                !seen.contains(entry.version + "|" + note)
+            }
+            if !fresh.isEmpty {
+                result.append(PatchNoteEntry(version: entry.version, date: entry.date, notes: fresh))
+            }
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    /// Updates from versions before the patch notes existed still have a library file.
+    @MainActor
+    private static func hasExistingLibrary() -> Bool {
+        guard let url = LibraryStore.defaultFileURL() else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
     }
 }
 
@@ -125,7 +140,7 @@ private struct PatchNoteCard: View {
                     .font(AppFont.caption)
                     .foregroundStyle(Theme.textTertiary)
             }
-            ForEach(Array(entry.notes.enumerated()), id: \.offset) { (_: Int, note: String) in
+            ForEach(entry.notes, id: \.self) { (note: String) in
                 HStack(alignment: .top, spacing: 10) {
                     Circle()
                         .fill(Theme.accentGradient)

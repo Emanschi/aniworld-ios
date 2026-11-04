@@ -48,6 +48,14 @@ final class SettingsStore {
     var verifyStreams: Bool = true {
         didSet { defaults.set(verifyStreams, forKey: Keys.verifyStreams) }
     }
+    /// Lokale Mitteilung bei neuen Folgen der Favoriten.
+    var notifyNewEpisodes: Bool = false {
+        didSet { defaults.set(notifyNewEpisodes, forKey: Keys.notifyNewEpisodes) }
+    }
+    /// Mitteilung bei neuer App-Version.
+    var notifyAppUpdates: Bool = true {
+        didSet { defaults.set(notifyAppUpdates, forKey: Keys.notifyAppUpdates) }
+    }
 
     var streamPreferences: StreamPreferences {
         StreamPreferences(languagePriority: languagePriority, hosterPriority: hosterPriority)
@@ -66,6 +74,8 @@ final class SettingsStore {
         static let autoSkipEnding = "settings.autoSkipEnding"
         static let autoNextOnOutro = "settings.autoNextOnOutro"
         static let verifyStreams = "settings.verifyStreams"
+        static let notifyNewEpisodes = "settings.notifyNewEpisodes"
+        static let notifyAppUpdates = "settings.notifyAppUpdates"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -100,6 +110,12 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.verifyStreams) != nil {
             verifyStreams = defaults.bool(forKey: Keys.verifyStreams)
+        }
+        if defaults.object(forKey: Keys.notifyNewEpisodes) != nil {
+            notifyNewEpisodes = defaults.bool(forKey: Keys.notifyNewEpisodes)
+        }
+        if defaults.object(forKey: Keys.notifyAppUpdates) != nil {
+            notifyAppUpdates = defaults.bool(forKey: Keys.notifyAppUpdates)
         }
     }
 
