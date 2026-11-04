@@ -114,8 +114,8 @@ enum LibraryMerge {
     private static func isBetter(_ a: CustomSkip, than b: CustomSkip) -> Bool {
         if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
         // Deterministic tie-break so the merge stays commutative.
-        let ta = [a.introStart ?? -1, a.introEnd ?? -1, a.outroStart ?? -1, a.outroEnd ?? -1]
-        let tb = [b.introStart ?? -1, b.introEnd ?? -1, b.outroStart ?? -1, b.outroEnd ?? -1]
+        let ta: [Double] = [a.introStart ?? -1, a.introEnd ?? -1, a.outroStart ?? -1, a.outroEnd ?? -1]
+        let tb: [Double] = [b.introStart ?? -1, b.introEnd ?? -1, b.outroStart ?? -1, b.outroEnd ?? -1]
         for (x, y) in zip(ta, tb) where x != y { return x > y }
         return false
     }
