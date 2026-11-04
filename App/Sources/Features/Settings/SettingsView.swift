@@ -168,6 +168,11 @@ private struct PlaybackSection: View {
                 Toggle("Outro automatisch überspringen", isOn: $settings.autoSkipEnding)
                     .tint(Theme.accent)
                     .padding(.leading, 12)
+                if settings.autoplayNext {
+                    Toggle("Nach dem Outro direkt zur nächsten Folge", isOn: $settings.autoNextOnOutro)
+                        .tint(Theme.accent)
+                        .padding(.leading, 12)
+                }
             }
             Stepper(value: $settings.introSkipSeconds, in: 30...150, step: 5) {
                 HStack {

@@ -2,42 +2,31 @@ import SwiftUI
 
 /// "Intro überspringen" / "Nächste Folge" pills, visible even while the controls are hidden.
 struct PlayerPills: View {
-    let vm: PlayerViewModel
+    /// Skip button to show (nil = none). Passed in as plain values so the parent drives the updates,
+    /// independent of the controls being visible.
+    let skip: SkipPill?
+    let showNext: Bool
+    let onSkip: () -> Void
+    let onNext: () -> Void
     /// Lifts the pills above the scrubber while the controls are shown.
     let controlsShown: Bool
 
-    private var showSkipIntro: Bool {
-        if vm.activeSkipSegment != nil {
-            return true
-        }
-        // Fixed-jump fallback only when no intro time is known for this episode.
-        return !vm.hasKnownIntro && vm.position < 240 && vm.duration > Double(vm.introSkipSeconds) + 120
-    }
-
-    private var skipButtonTitle: String {
-        vm.activeSkipSegment?.skipType.buttonTitle ?? "Intro überspringen"
-    }
-
-    private var showNext: Bool {
-        vm.hasNext && vm.countdown == nil && vm.duration > 0 && vm.duration - vm.position < 120
-    }
-
     var body: some View {
-        VStack {
-            Spacer(minLength: 0)
-            HStack(spacing: 10) {
-                Spacer(minLength: 0)
-                if showSkipIntro {
-                    pill(skipButtonTitle, systemImage: "forward.fill") { vm.skipActiveOrIntro() }
-                }
-                if showNext {
-                    pill("Nächste Folge", systemImage: "forward.end.fill") { vm.playNext() }
-                }
+        HStack(spacing: 10) {
+            if let skip {
+                pill(skip.title, systemImage: "forward.fill", action: onSkip)
+                    .transition(.opacity)
             }
-            .padding(.trailing, 16)
-            .padding(.bottom, controlsShown ? 112 : 28)
-            .animation(.easeInOut(duration: 0.25), value: controlsShown)
+            if showNext {
+                pill("Nächste Folge", systemImage: "forward.end.fill", action: onNext)
+                    .transition(.opacity)
+            }
         }
+        .padding(.trailing, 16)
+        .padding(.bottom, controlsShown ? 112 : 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .animation(.easeInOut(duration: 0.25), value: controlsShown)
+        .animation(.easeInOut(duration: 0.2), value: skip)
     }
 
     private func pill(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {

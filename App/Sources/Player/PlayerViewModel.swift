@@ -4,6 +4,14 @@ import MediaPlayer
 import Observation
 import AniworldKit
 
+/// Skip button offered by the player (Netflix-style), see `PlayerViewModel.skipPill`.
+struct SkipPill: Equatable {
+    var title: String
+    /// Id of the skip segment; nil for the fixed-jump intro fallback.
+    var segmentId: String?
+    var isEnding: Bool
+}
+
 /// Drives one player screen: resolves a stream, owns the `AVPlayer`, saves progress,
 /// handles hoster/language switching, hoster fallback and autoplay of the next episode.
 @MainActor
@@ -36,6 +44,8 @@ final class PlayerViewModel {
     var hasItem = false
     var skipTimes: [SkipTime] = []
     var activeSkipSegment: SkipTime?
+    /// Skip pill that is currently offered (intro, recap, outro or fixed-jump fallback), nil when none.
+    private(set) var skipPill: SkipPill?
     /// User-defined times that apply to the current episode (episode entry first, then season entry).
     private(set) var customSkip: CustomSkip?
     /// Shows the small "Kein Intro hinterlegt" card.
@@ -70,6 +80,11 @@ final class PlayerViewModel {
     @ObservationIgnored private var skipLookupDone = false
     @ObservationIgnored private var introPromptHandledFor: String?
     @ObservationIgnored private var autoSkippedIds: Set<String> = []
+    /// Segments already skipped by the user for `skipStateEpisodeID` (pill stays hidden for them).
+    @ObservationIgnored private var skippedSegmentIds: Set<String> = []
+    @ObservationIgnored private var fixedIntroSkipUsed = false
+    @ObservationIgnored private var skipInFlight = false
+    @ObservationIgnored private var skipStateEpisodeID: String?
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
@@ -377,7 +392,7 @@ final class PlayerViewModel {
         Task { [weak self] in
             guard let self else { return }
             if self.nextInfo == nil { await self.prepareNext() }
-            guard gen == self.generation, self.nextInfo != nil else { return }
+            guard gen == self.generation, self.nextInfo != nil, self.countdown == nil else { return }
             self.startCountdown()
         }
     }
@@ -426,22 +441,42 @@ final class PlayerViewModel {
         updateBuffering()
 
         let currentPos = s.isFinite ? s : position
+        if skipStateEpisodeID != episode.id {
+            skipStateEpisodeID = episode.id
+            skippedSegmentIds = []
+            fixedIntroSkipUsed = false
+            skipInFlight = false
+            autoSkippedIds = []
+            skipPill = nil
+        }
+        var active: SkipTime?
         if settings?.enableSkipDetection == true && !skipTimes.isEmpty {
-            let active = skipTimes.first { seg in
+            active = skipTimes.first { seg in
                 currentPos >= seg.interval.startTime && currentPos < seg.interval.endTime
             }
-            activeSkipSegment = active
-            if let active {
-                let shouldAuto = (active.skipType.isOpening && settings?.autoSkipIntro == true)
-                    || (active.skipType.isEnding && settings?.autoSkipEnding == true)
-                if shouldAuto && !autoSkippedIds.contains(active.skipId) {
-                    autoSkippedIds.insert(active.skipId)
+        }
+        if let current = active, skippedSegmentIds.contains(current.skipId) {
+            active = nil
+        }
+        if activeSkipSegment != active { activeSkipSegment = active }
+        if let active {
+            let wantsNextOnOutro = active.skipType.isEnding && settings?.autoNextOnOutro == true
+                && settings?.autoplayNext == true && hasNext
+            let shouldAuto = (active.skipType.isOpening && settings?.autoSkipIntro == true)
+                || (active.skipType.isEnding && settings?.autoSkipEnding == true)
+                || wantsNextOnOutro
+            if shouldAuto && !autoSkippedIds.contains(active.skipId) {
+                autoSkippedIds.insert(active.skipId)
+                skippedSegmentIds.insert(active.skipId)
+                activeSkipSegment = nil
+                if wantsNextOnOutro {
+                    if countdown == nil { startCountdown() }
+                } else {
                     seek(to: active.interval.endTime)
                 }
             }
-        } else {
-            activeSkipSegment = nil
         }
+        updateSkipPill(position: currentPos, active: activeSkipSegment)
         tickCount += 1
         if tickCount % 10 == 0 { saveProgress() }
         if tickCount % 2 == 0 { updateNowPlaying() }
@@ -644,11 +679,45 @@ final class PlayerViewModel {
         return (op?.interval.startTime, op?.interval.endTime, ed?.interval.startTime, ed?.interval.endTime)
     }
 
+    /// Recomputes the pill; only assigns on change so observers are not invalidated every tick.
+    private func updateSkipPill(position pos: Double, active: SkipTime?) {
+        var pill: SkipPill?
+        if skipInFlight || countdown != nil {
+            pill = nil
+        } else if let active {
+            pill = SkipPill(title: active.skipType.buttonTitle, segmentId: active.skipId,
+                            isEnding: active.skipType.isEnding)
+        } else if !fixedIntroSkipUsed && !hasKnownIntro && pos < 240
+                    && duration > Double(introSkipSeconds) + 120 {
+            pill = SkipPill(title: "Intro überspringen", segmentId: nil, isEnding: false)
+        }
+        if pill != skipPill { skipPill = pill }
+    }
+
+    /// Called by the skip pill. Ignored while a skip is running; each segment can be skipped once.
     func skipActiveOrIntro() {
-        if let active = activeSkipSegment {
-            seek(to: active.interval.endTime)
+        guard !skipInFlight, let pill = skipPill else { return }
+        skipInFlight = true
+        skipPill = nil
+        if let id = pill.segmentId {
+            skippedSegmentIds.insert(id)
+            autoSkippedIds.insert(id)
+            let target = activeSkipSegment?.skipId == id ? activeSkipSegment?.interval.endTime : nil
+            activeSkipSegment = nil
+            if pill.isEnding && settings?.autoplayNext == true && hasNext {
+                // Outro skip goes straight to the next episode (countdown card).
+                skipInFlight = false
+                if countdown == nil { startCountdown() }
+                return
+            }
+            if let target {
+                seek(to: target) { [weak self] in self?.skipInFlight = false }
+                return
+            }
+            skipInFlight = false
         } else {
-            skipIntro()
+            fixedIntroSkipUsed = true
+            seek(to: currentSeconds() + Double(introSkipSeconds)) { [weak self] in self?.skipInFlight = false }
         }
     }
 
@@ -667,12 +736,15 @@ final class PlayerViewModel {
     }
 
     /// Accurate seek; the displayed position updates immediately.
-    func seek(to seconds: Double) {
+    func seek(to seconds: Double, completion: (@MainActor () -> Void)? = nil) {
         let target = clamped(seconds)
         position = target
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            Task { @MainActor in self?.updateNowPlaying() }
+            Task { @MainActor in
+                self?.updateNowPlaying()
+                completion?()
+            }
         }
     }
 

@@ -76,6 +76,10 @@ private struct PlayerContentView: View {
         isPlaying && !locked && vm.countdown == nil && (controlsShown || vm.isPaused || vm.isScrubbing)
     }
 
+    private var showNextPill: Bool {
+        vm.hasNext && vm.countdown == nil && vm.duration > 0 && vm.duration - vm.position < 120
+    }
+
     private var autoHideAllowed: Bool {
         isPlaying && !vm.isPaused && !vm.isScrubbing && panel == nil
     }
@@ -91,7 +95,14 @@ private struct PlayerContentView: View {
             controlsLayer
             lockLayer
             if isPlaying && !locked {
-                PlayerPills(vm: vm, controlsShown: showFull)
+                PlayerPills(
+                    skip: vm.skipPill,
+                    showNext: showNextPill,
+                    onSkip: { vm.skipActiveOrIntro() },
+                    onNext: { vm.playNext() },
+                    controlsShown: showFull
+                )
+                .zIndex(2)
                 if vm.noIntroPromptVisible && panel == nil {
                     PlayerIntroPrompt(vm: vm, controlsShown: showFull) {
                         vm.dismissIntroPrompt()

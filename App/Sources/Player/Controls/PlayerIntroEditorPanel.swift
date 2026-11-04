@@ -10,7 +10,6 @@ struct PlayerIntroEditorPanel: View {
     @State private var outroStart: Double?
     @State private var outroEnd: Double?
     @State private var wholeSeason = true
-    @State private var showOutro = false
     @State private var loaded = false
 
     private var duration: Double { vm.duration }
@@ -21,7 +20,7 @@ struct PlayerIntroEditorPanel: View {
     /// Returns a German error text, or nil when the input can be saved.
     private var validationError: String? {
         if !introTouched && !outroTouched {
-            return "Lege mindestens Intro-Anfang und -Ende fest."
+            return "Lege Intro oder Outro (Anfang und Ende) fest."
         }
         if introTouched {
             guard let s = introStart, let e = introEnd else { return "Intro: Anfang und Ende werden benötigt." }
@@ -38,7 +37,7 @@ struct PlayerIntroEditorPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PlayerPanelHeader(title: "Intro bearbeiten",
+            PlayerPanelHeader(title: "Intro & Outro bearbeiten",
                               subtitle: "\(vm.series.title) · \(vm.episode.code)",
                               onClose: onClose)
             ScrollView {
@@ -51,27 +50,12 @@ struct PlayerIntroEditorPanel: View {
                     PlayerTimeAdjustRow(title: "Intro-Anfang", value: $introStart, vm: vm)
                     PlayerTimeAdjustRow(title: "Intro-Ende", value: $introEnd, vm: vm)
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { showOutro.toggle() }
-                    } label: {
-                        HStack {
-                            Text("Outro (optional)")
-                                .font(.system(.subheadline, design: .rounded).weight(.bold))
-                                .foregroundStyle(.white)
-                            Spacer(minLength: 8)
-                            Image(systemName: showOutro ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(Theme.textTertiary)
-                        }
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PressableStyle())
-
-                    if showOutro {
-                        PlayerTimeAdjustRow(title: "Outro-Anfang", value: $outroStart, vm: vm)
-                        PlayerTimeAdjustRow(title: "Outro-Ende", value: $outroEnd, vm: vm)
-                    }
+                    Text("OUTRO (OPTIONAL)")
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(Theme.textTertiary)
+                        .padding(.top, 4)
+                    PlayerTimeAdjustRow(title: "Outro-Anfang", value: $outroStart, vm: vm)
+                    PlayerTimeAdjustRow(title: "Outro-Ende", value: $outroEnd, vm: vm)
 
                     Text("GELTUNGSBEREICH")
                         .font(.system(.caption, design: .rounded).weight(.bold))
@@ -140,7 +124,6 @@ struct PlayerIntroEditorPanel: View {
         introEnd = d.introEnd
         outroStart = d.outroStart
         outroEnd = d.outroEnd
-        showOutro = d.outroStart != nil || d.outroEnd != nil
         if let existing = vm.customSkip {
             wholeSeason = existing.episode == nil
         } else {

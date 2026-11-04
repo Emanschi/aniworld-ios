@@ -40,6 +40,10 @@ final class SettingsStore {
     var autoSkipEnding: Bool = false {
         didSet { defaults.set(autoSkipEnding, forKey: Keys.autoSkipEnding) }
     }
+    /// With autoplay on: when the outro starts, skip it and start the next episode (via the countdown).
+    var autoNextOnOutro: Bool = false {
+        didSet { defaults.set(autoNextOnOutro, forKey: Keys.autoNextOnOutro) }
+    }
     /// Check that a stream's segments load before playing (slower, more reliable).
     var verifyStreams: Bool = true {
         didSet { defaults.set(verifyStreams, forKey: Keys.verifyStreams) }
@@ -60,6 +64,7 @@ final class SettingsStore {
         static let enableSkipDetection = "settings.enableSkipDetection"
         static let autoSkipIntro = "settings.autoSkipIntro"
         static let autoSkipEnding = "settings.autoSkipEnding"
+        static let autoNextOnOutro = "settings.autoNextOnOutro"
         static let verifyStreams = "settings.verifyStreams"
     }
 
@@ -89,6 +94,9 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.autoSkipEnding) != nil {
             autoSkipEnding = defaults.bool(forKey: Keys.autoSkipEnding)
+        }
+        if defaults.object(forKey: Keys.autoNextOnOutro) != nil {
+            autoNextOnOutro = defaults.bool(forKey: Keys.autoNextOnOutro)
         }
         if defaults.object(forKey: Keys.verifyStreams) != nil {
             verifyStreams = defaults.bool(forKey: Keys.verifyStreams)
