@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import MediaPlayer
 import Observation
 import AniworldKit
 
@@ -34,7 +35,18 @@ final class PlayerViewModel {
     /// True once an item was attached to the player (the native view is shown from then on).
     var hasItem = false
 
+    // Custom-UI state
+    var isBuffering = false
+    /// End (seconds) of the buffered range containing the current position.
+    var bufferedPosition: Double = 0
+    /// Playback speed; persists across episodes in this session. Change via `setPlaybackRate(_:)`.
+    private(set) var playbackRate: Float = 1.0
+    static let playbackRates: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+    var videoGravity: AVLayerVideoGravity = .resizeAspect
+    var isScrubbing = false
+
     let player = AVPlayer()
+    let pip = PictureInPictureController()
 
     // Internals
     @ObservationIgnored private var service: AniworldService?
@@ -61,6 +73,10 @@ final class PlayerViewModel {
     @ObservationIgnored private var nextInfo: (EpisodeRef, [EpisodeRef])?
     @ObservationIgnored private var isShutdown = false
     @ObservationIgnored private var attached = false
+    @ObservationIgnored private var bufferEmptyObservation: NSKeyValueObservation?
+    @ObservationIgnored private var nowPlaying: NowPlayingController?
+    @ObservationIgnored private var scrubWasPlaying = false
+    @ObservationIgnored private var lastScrubSeek = Date.distantPast
     @ObservationIgnored private let initialSession: PlaybackSession
 
     init(session: PlaybackSession) {
@@ -84,13 +100,23 @@ final class PlayerViewModel {
         self.settings = settings
         self.coordinator = coordinator
 
-        let interval = CMTime(seconds: 1, preferredTimescale: 600)
+        player.defaultRate = playbackRate
+        pip.onActiveChange = { [weak self] active in self?.isPictureInPictureActive = active }
+        nowPlaying = NowPlayingController(handlers: .init(
+            play: { [weak self] in self?.play() },
+            pause: { [weak self] in self?.pause() },
+            togglePlayPause: { [weak self] in self?.togglePlayPause() },
+            skip: { [weak self] delta in self?.seek(by: delta) },
+            seek: { [weak self] seconds in self?.seek(to: seconds) },
+            next: { [weak self] in self?.playNext() }))
+
+        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             MainActor.assumeIsolated { self?.tick(time) }
         }
         timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            let paused = player.timeControlStatus == .paused
-            Task { @MainActor in self?.timeControlChanged(paused: paused) }
+            let status = player.timeControlStatus
+            Task { @MainActor in self?.timeControlChanged(status: status) }
         }
     }
 
@@ -112,6 +138,10 @@ final class PlayerViewModel {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
         timeControlObservation = nil
+        bufferEmptyObservation = nil
+        nowPlaying?.teardown()
+        nowPlaying = nil
+        pip.stop()
         player.pause()
         player.replaceCurrentItem(with: nil)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -126,6 +156,7 @@ final class PlayerViewModel {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .moviePlayback)
         try? session.setActive(true)
+        player.allowsExternalPlayback = true
     }
 
     // MARK: Loading
@@ -207,6 +238,11 @@ final class PlayerViewModel {
         duration = 0
         tickCount = 0
 
+        isBuffering = false
+        bufferedPosition = 0
+        bufferEmptyObservation = item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in self?.updateBuffering() }
+        }
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             let status = item.status
             let message = item.error?.localizedDescription
@@ -229,6 +265,7 @@ final class PlayerViewModel {
 
     private func removeItemObservers() {
         statusObservation = nil
+        bufferEmptyObservation = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let failObserver { NotificationCenter.default.removeObserver(failObserver) }
         endObserver = nil
@@ -269,7 +306,8 @@ final class PlayerViewModel {
                 if let d = self.player.currentItem?.duration.seconds, d.isFinite, d > 0 { self.duration = d }
                 self.state = .playing
                 self.readyForSaving = true
-                self.player.play()
+                self.play()
+                self.updateNowPlaying()
                 Task { await self.prepareNext() }
             }
         case .failed:
@@ -306,19 +344,60 @@ final class PlayerViewModel {
         }
     }
 
-    private func timeControlChanged(paused: Bool) {
+    private func timeControlChanged(status: AVPlayer.TimeControlStatus) {
         guard !isShutdown else { return }
-        isPaused = paused
-        if paused { saveProgress() }
+        let paused = status == .paused
+        if !isScrubbing {
+            isPaused = paused
+            if paused { saveProgress() }
+        }
+        updateBuffering()
+        updateNowPlaying()
+    }
+
+    private func updateBuffering() {
+        guard !isShutdown else { return }
+        let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        let emptyWhilePlaying = (player.currentItem?.isPlaybackBufferEmpty ?? false)
+            && !isPaused
+        let value = (waiting || emptyWhilePlaying) && state == .playing
+        if isBuffering != value { isBuffering = value }
+    }
+
+    private func updateBufferedPosition(at now: Double) {
+        guard let ranges = player.currentItem?.loadedTimeRanges else { return }
+        var end = bufferedPosition
+        for value in ranges {
+            let r = value.timeRangeValue
+            let start = r.start.seconds
+            let stop = r.end.seconds
+            if start.isFinite, stop.isFinite, now >= start - 0.5, now <= stop + 0.5 {
+                end = stop
+                break
+            }
+        }
+        if end != bufferedPosition { bufferedPosition = end }
     }
 
     private func tick(_ time: CMTime) {
         guard readyForSaving, !isShutdown else { return }
         let s = time.seconds
-        if s.isFinite { position = s }
+        if s.isFinite, !isScrubbing { position = s }
         if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d }
+        if s.isFinite { updateBufferedPosition(at: s) }
+        updateBuffering()
         tickCount += 1
-        if tickCount % 5 == 0 { saveProgress() }
+        if tickCount % 10 == 0 { saveProgress() }
+        if tickCount % 2 == 0 { updateNowPlaying() }
+    }
+
+    private func updateNowPlaying() {
+        guard !isShutdown, let nowPlaying else { return }
+        let subtitle = episode.title.isEmpty ? episode.code : "\(episode.code) – \(episode.title)"
+        let playing = player.timeControlStatus != .paused
+        nowPlaying.update(title: series.title, subtitle: subtitle, duration: duration,
+                          elapsed: position, rate: playbackRate, isPlaying: playing,
+                          hasNext: hasNext, coverURL: series.coverURL)
     }
 
     // MARK: Progress
@@ -347,6 +426,7 @@ final class PlayerViewModel {
         guard key == episode.id, !isShutdown else { return }
         nextInfo = result
         hasNext = result != nil
+        updateNowPlaying()
     }
 
     private func startCountdown() {
@@ -374,10 +454,30 @@ final class PlayerViewModel {
     /// Loads the next episode in place (same screen, new item).
     func playNext() {
         guard case let (next, episodes)? = nextInfo, let library else { return }
+        library.setWatched(true, episode: episode, series: series)
+        switchEpisode(to: next, episodes: episodes, startAt: 0)
+    }
+
+    var hasPrevious: Bool {
+        guard let i = seasonEpisodes.firstIndex(where: { $0.id == episode.id }) else { return false }
+        return i > 0
+    }
+
+    func playPrevious() {
+        guard let i = seasonEpisodes.firstIndex(where: { $0.id == episode.id }), i > 0 else { return }
+        playEpisode(seasonEpisodes[i - 1])
+    }
+
+    /// Switches to any episode of `seasonEpisodes` in place.
+    func playEpisode(_ episode: EpisodeRef) {
+        guard episode.id != self.episode.id, seasonEpisodes.contains(where: { $0.id == episode.id }) else { return }
+        switchEpisode(to: episode, episodes: seasonEpisodes, startAt: nil)
+    }
+
+    private func switchEpisode(to next: EpisodeRef, episodes: [EpisodeRef], startAt: Double?) {
         countdownTask?.cancel()
         countdown = nil
         saveProgress()
-        library.setWatched(true, episode: episode, series: series)
 
         episode = next
         seasonEpisodes = episodes
@@ -389,7 +489,7 @@ final class PlayerViewModel {
         duration = 0
         coordinator?.activeSession?.episode = next
         coordinator?.activeSession?.seasonEpisodes = episodes
-        beginLoad(startAt: 0, language: currentLanguage, excluding: [])
+        beginLoad(startAt: startAt, language: currentLanguage, excluding: [])
     }
 
     // MARK: User actions
@@ -398,12 +498,95 @@ final class PlayerViewModel {
         seek(to: currentSeconds() + Double(introSkipSeconds))
     }
 
-    private func seek(to seconds: Double) {
-        var target = seconds
+    private func clamped(_ seconds: Double) -> Double {
+        var target = max(seconds, 0)
         if duration > 0 { target = min(target, max(duration - 1, 0)) }
-        player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
-                    toleranceBefore: .zero, toleranceAfter: .zero)
+        return target
+    }
+
+    func seek(by seconds: Double) {
+        seek(to: (isScrubbing ? position : currentSeconds()) + seconds)
+    }
+
+    /// Accurate seek; the displayed position updates immediately.
+    func seek(to seconds: Double) {
+        let target = clamped(seconds)
         position = target
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in self?.updateNowPlaying() }
+        }
+    }
+
+    // MARK: Playback control
+
+    func play() {
+        guard !isShutdown else { return }
+        player.defaultRate = playbackRate
+        player.play()
+    }
+
+    func pause() {
+        player.pause()
+    }
+
+    func togglePlayPause() {
+        if player.timeControlStatus == .paused { play() } else { pause() }
+    }
+
+    func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        player.defaultRate = rate
+        if player.timeControlStatus != .paused { player.rate = rate }
+        updateNowPlaying()
+    }
+
+    func toggleVideoGravity() {
+        videoGravity = videoGravity == .resizeAspect ? .resizeAspectFill : .resizeAspect
+    }
+
+    func attachLayer(_ layer: AVPlayerLayer) {
+        pip.attach(to: layer)
+        isPictureInPictureActive = pip.isActive
+    }
+
+    // MARK: Scrubbing
+
+    func beginScrubbing() {
+        guard !isScrubbing else { return }
+        scrubWasPlaying = player.timeControlStatus != .paused
+        isScrubbing = true
+        player.pause()
+    }
+
+    /// Updates the displayed position; real seeks are throttled with a tolerance.
+    func scrub(to seconds: Double) {
+        if !isScrubbing { beginScrubbing() }
+        let target = clamped(seconds)
+        position = target
+        let now = Date()
+        guard now.timeIntervalSince(lastScrubSeek) >= 0.15 else { return }
+        lastScrubSeek = now
+        let tolerance = CMTime(seconds: 1, preferredTimescale: 600)
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+                    toleranceBefore: tolerance, toleranceAfter: tolerance)
+    }
+
+    func endScrubbing(at seconds: Double) {
+        let target = clamped(seconds)
+        position = target
+        let resume = scrubWasPlaying
+        scrubWasPlaying = false
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isScrubbing = false
+                self.isPaused = self.player.timeControlStatus == .paused
+                if resume { self.play() }
+                self.updateNowPlaying()
+            }
+        }
     }
 
     private func resumePosition() -> Double {
