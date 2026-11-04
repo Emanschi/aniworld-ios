@@ -6,22 +6,78 @@ import AniworldKit
 @MainActor
 @Observable
 final class SettingsStore {
-    var languagePriority: [StreamLanguage] = StreamPreferences.default.languagePriority
-    var hosterPriority: [String] = StreamPreferences.default.hosterPriority
+    var languagePriority: [StreamLanguage] = StreamPreferences.default.languagePriority {
+        didSet {
+            let normalized = Self.normalize(languagePriority)
+            if normalized != languagePriority { languagePriority = normalized; return }
+            defaults.set(languagePriority.map(\.rawValue), forKey: Keys.languagePriority)
+        }
+    }
+    var hosterPriority: [String] = StreamPreferences.default.hosterPriority {
+        didSet { defaults.set(hosterPriority, forKey: Keys.hosterPriority) }
+    }
     /// Play the next episode automatically when one ends.
-    var autoplayNext: Bool = true
+    var autoplayNext: Bool = true {
+        didSet { defaults.set(autoplayNext, forKey: Keys.autoplayNext) }
+    }
     /// Countdown before autoplay, seconds.
-    var autoplayCountdown: Int = 8
+    var autoplayCountdown: Int = 8 {
+        didSet { defaults.set(autoplayCountdown, forKey: Keys.autoplayCountdown) }
+    }
     /// Length of the "Intro überspringen" jump, seconds.
-    var introSkipSeconds: Int = 85
+    var introSkipSeconds: Int = 85 {
+        didSet { defaults.set(introSkipSeconds, forKey: Keys.introSkipSeconds) }
+    }
     /// Check that a stream's segments load before playing (slower, more reliable).
-    var verifyStreams: Bool = true
+    var verifyStreams: Bool = true {
+        didSet { defaults.set(verifyStreams, forKey: Keys.verifyStreams) }
+    }
 
     var streamPreferences: StreamPreferences {
         StreamPreferences(languagePriority: languagePriority, hosterPriority: hosterPriority)
     }
 
-    init() {
-        // TODO(Agent C): load from UserDefaults and persist on change
+    @ObservationIgnored private let defaults: UserDefaults
+
+    private enum Keys {
+        static let languagePriority = "settings.languagePriority"
+        static let hosterPriority = "settings.hosterPriority"
+        static let autoplayNext = "settings.autoplayNext"
+        static let autoplayCountdown = "settings.autoplayCountdown"
+        static let introSkipSeconds = "settings.introSkipSeconds"
+        static let verifyStreams = "settings.verifyStreams"
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        // Assigning inside init does not trigger didSet.
+        if let raw = defaults.array(forKey: Keys.languagePriority) as? [String] {
+            languagePriority = Self.normalize(raw.compactMap { StreamLanguage(rawValue: $0) })
+        }
+        if let hosters = defaults.array(forKey: Keys.hosterPriority) as? [String], !hosters.isEmpty {
+            hosterPriority = hosters
+        }
+        if defaults.object(forKey: Keys.autoplayNext) != nil {
+            autoplayNext = defaults.bool(forKey: Keys.autoplayNext)
+        }
+        if defaults.object(forKey: Keys.autoplayCountdown) != nil {
+            autoplayCountdown = max(defaults.integer(forKey: Keys.autoplayCountdown), 1)
+        }
+        if defaults.object(forKey: Keys.introSkipSeconds) != nil {
+            introSkipSeconds = max(defaults.integer(forKey: Keys.introSkipSeconds), 1)
+        }
+        if defaults.object(forKey: Keys.verifyStreams) != nil {
+            verifyStreams = defaults.bool(forKey: Keys.verifyStreams)
+        }
+    }
+
+    /// Removes duplicates and appends missing languages so all three are always present.
+    private static func normalize(_ list: [StreamLanguage]) -> [StreamLanguage] {
+        var seen = Set<StreamLanguage>()
+        var result = list.filter { seen.insert($0).inserted }
+        for lang in StreamLanguage.allCases where !seen.contains(lang) {
+            result.append(lang)
+        }
+        return result
     }
 }
