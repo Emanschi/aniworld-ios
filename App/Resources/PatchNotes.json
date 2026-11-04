@@ -1,0 +1,16 @@
+[
+  {
+    "version": "0.2.0",
+    "date": "2026-11-04",
+    "notes": [
+      "iCloud-Sync: Favoriten, Verlauf und Fortschritt lassen sich über einen Ordner in iCloud Drive auf mehreren Geräten abgleichen.",
+      "Du kannst jetzt eigene Intro- und Outro-Zeiten für Serien festlegen.",
+      "„Intro überspringen“ erscheint jetzt auch ohne geöffnetes Menü und lässt sich nur einmal drücken.",
+      "Neuer Button „Outro überspringen“ – mit Autoplay geht es direkt zur nächsten Folge.",
+      "Neue Option: Nach dem Outro automatisch zur nächsten Folge weiterspielen.",
+      "Folgen und ganze Staffeln lassen sich herunterladen und offline ansehen.",
+      "Die App weist dich auf neue Versionen hin.",
+      "Nach einem Update zeigt die App einmalig die Patchnotes an."
+    ]
+  }
+]

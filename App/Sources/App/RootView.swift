@@ -4,6 +4,11 @@ import SwiftUI
 struct RootView: View {
     @Environment(PlaybackCoordinator.self) private var playback
     @Environment(LibrarySyncService.self) private var sync
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var updates = AppUpdateChecker.shared
+    @State private var patchNotes: PatchNotesPayload?
+    @State private var pendingPatchNotes: [PatchNoteEntry]?
+    @State private var didCheckPatchNotes = false
 
     var body: some View {
         @Bindable var playback = playback
@@ -29,7 +34,41 @@ struct RootView: View {
         }) {
             SyncOnboardingView()
         }
-        .task { sync.start() }
+        .overlay(alignment: .top) {
+            if updates.shouldShowBanner, let update = updates.availableUpdate {
+                UpdateBannerView(update: update) {
+                    withAnimation(.easeInOut(duration: 0.25)) { updates.dismissBanner() }
+                }
+                .padding(.top, 6)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: updates.shouldShowBanner)
+        .sheet(item: $patchNotes) { (payload: PatchNotesPayload) in
+            PatchNotesSheet(entries: payload.entries)
+        }
+        .task {
+            sync.start()
+            if !didCheckPatchNotes {
+                didCheckPatchNotes = true
+                pendingPatchNotes = PatchNotesStore.consumePendingNotes()
+                presentPatchNotesIfPossible()
+            }
+            await updates.check()
+        }
+        .onChange(of: sync.showOnboarding) { _, _ in presentPatchNotesIfPossible() }
+        .onChange(of: playback.activeSession == nil) { _, _ in presentPatchNotesIfPossible() }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active { Task { await updates.check() } }
+        }
+    }
+
+    /// Shows pending patch notes only while no other sheet / cover is up.
+    private func presentPatchNotesIfPossible() {
+        guard let entries = pendingPatchNotes, patchNotes == nil else { return }
+        guard !sync.showOnboarding, playback.activeSession == nil else { return }
+        pendingPatchNotes = nil
+        patchNotes = PatchNotesPayload(entries: entries)
     }
 }
 
