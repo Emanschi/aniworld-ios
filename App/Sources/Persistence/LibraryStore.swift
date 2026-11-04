@@ -18,6 +18,17 @@ final class LibraryStore {
     /// Preferred language per series slug.
     private(set) var languageBySlug: [String: StreamLanguage] = [:]
 
+    // Sync bookkeeping (not shown in the UI).
+    @ObservationIgnored private var languageTimes: [String: Date] = [:]
+    @ObservationIgnored private var favoriteTombstones: [String: Date] = [:]
+    @ObservationIgnored private var historyTombstones: [String: Date] = [:]
+    @ObservationIgnored private var historyClearedAt: Date?
+    @ObservationIgnored private var resetAt: Date?
+
+    /// Called (on the main actor) after every local change made through the public API.
+    /// Not called for changes applied by `apply(merged:)`.
+    @ObservationIgnored var onChange: (() -> Void)?
+
     @ObservationIgnored private let fileURL: URL?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleTokens: [NSObjectProtocol] = []
@@ -29,10 +40,18 @@ final class LibraryStore {
         var history: [WatchEntry] = []
         var progress: [String: EpisodeProgress] = [:]
         var languages: [String: StreamLanguage] = [:]
+        var languageTimes: [String: Date] = [:]
+        var favoriteTombstones: [String: Date] = [:]
+        var historyTombstones: [String: Date] = [:]
+        var historyClearedAt: Date?
+        var resetAt: Date?
 
         init() {}
 
-        enum CodingKeys: String, CodingKey { case favorites, history, progress, languages }
+        enum CodingKeys: String, CodingKey {
+            case favorites, history, progress, languages
+            case languageTimes, favoriteTombstones, historyTombstones, historyClearedAt, resetAt
+        }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -40,6 +59,11 @@ final class LibraryStore {
             history = try c.decodeIfPresent([WatchEntry].self, forKey: .history) ?? []
             progress = try c.decodeIfPresent([String: EpisodeProgress].self, forKey: .progress) ?? [:]
             languages = try c.decodeIfPresent([String: StreamLanguage].self, forKey: .languages) ?? [:]
+            languageTimes = try c.decodeIfPresent([String: Date].self, forKey: .languageTimes) ?? [:]
+            favoriteTombstones = try c.decodeIfPresent([String: Date].self, forKey: .favoriteTombstones) ?? [:]
+            historyTombstones = try c.decodeIfPresent([String: Date].self, forKey: .historyTombstones) ?? [:]
+            historyClearedAt = try c.decodeIfPresent(Date.self, forKey: .historyClearedAt)
+            resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
         }
     }
 
@@ -76,9 +100,16 @@ final class LibraryStore {
         history = snap.history
         progressByEpisode = snap.progress
         languageBySlug = snap.languages
+        languageTimes = snap.languageTimes
+        favoriteTombstones = snap.favoriteTombstones
+        historyTombstones = snap.historyTombstones
+        historyClearedAt = snap.historyClearedAt
+        resetAt = snap.resetAt
     }
 
-    private func scheduleSave() {
+    /// Schedules a debounced disk write. `notify: false` is used for changes that came from sync.
+    private func scheduleSave(notify: Bool = true) {
+        if notify { onChange?() }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -97,6 +128,11 @@ final class LibraryStore {
         snap.history = history
         snap.progress = progressByEpisode
         snap.languages = languageBySlug
+        snap.languageTimes = languageTimes
+        snap.favoriteTombstones = favoriteTombstones
+        snap.historyTombstones = historyTombstones
+        snap.historyClearedAt = historyClearedAt
+        snap.resetAt = resetAt
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? data.write(to: fileURL, options: [.atomic])
     }
@@ -118,6 +154,7 @@ final class LibraryStore {
 
     func removeFavorite(_ slug: String) {
         favorites.removeAll { $0.series.slug == slug }
+        favoriteTombstones[slug] = Date()
         scheduleSave()
     }
 
@@ -146,7 +183,10 @@ final class LibraryStore {
         upsertHistory(WatchEntry(series: series, episode: episode, language: language,
                                  position: position, duration: p.duration,
                                  updatedAt: now, isFinished: finished))
-        if let language { languageBySlug[series.slug] = language }
+        if let language {
+            languageBySlug[series.slug] = language
+            languageTimes[series.slug] = now
+        }
         scheduleSave()
     }
 
@@ -171,6 +211,7 @@ final class LibraryStore {
             if let entry = history.first(where: { $0.series.slug == series.slug }),
                entry.episode.id == episode.id {
                 history.removeAll { $0.series.slug == series.slug }
+                historyTombstones[series.slug] = now
             }
         }
         scheduleSave()
@@ -201,12 +242,15 @@ final class LibraryStore {
 
     func removeFromHistory(_ slug: String) {
         history.removeAll { $0.series.slug == slug }
+        historyTombstones[slug] = Date()
         scheduleSave()
     }
 
     /// Clears the "Weiterschauen" list only; per-episode progress is kept.
     func clearHistory() {
         history.removeAll()
+        historyClearedAt = Date()
+        historyTombstones = [:]
         scheduleSave()
     }
 
@@ -222,6 +266,7 @@ final class LibraryStore {
 
     func setPreferredLanguage(_ language: StreamLanguage, seriesSlug: String) {
         languageBySlug[seriesSlug] = language
+        languageTimes[seriesSlug] = Date()
         scheduleSave()
     }
 
@@ -231,7 +276,44 @@ final class LibraryStore {
         history = []
         progressByEpisode = [:]
         languageBySlug = [:]
+        languageTimes = [:]
+        favoriteTombstones = [:]
+        historyTombstones = [:]
+        historyClearedAt = nil
+        resetAt = Date()
+        onChange?()
         flush()
+    }
+
+    // MARK: Sync support
+
+    /// Everything the sync layer needs, as a plain value.
+    func exportState() -> LibraryState {
+        var langs: [String: LanguageChoice] = [:]
+        for (slug, lang) in languageBySlug {
+            langs[slug] = LanguageChoice(language: lang, updatedAt: languageTimes[slug] ?? .distantPast)
+        }
+        return LibraryState(
+            favorites: favorites, favoriteTombstones: favoriteTombstones,
+            history: history, historyTombstones: historyTombstones,
+            historyClearedAt: historyClearedAt, progress: progressByEpisode,
+            languages: langs, resetAt: resetAt
+        )
+    }
+
+    /// Replaces the local library with a merged state. Does not trigger `onChange`.
+    func apply(merged: LibraryState) {
+        guard merged != exportState() else { return }
+        favorites = merged.favorites
+        favoriteTombstones = merged.favoriteTombstones
+        history = merged.history
+        historyTombstones = merged.historyTombstones
+        historyClearedAt = merged.historyClearedAt
+        progressByEpisode = merged.progress
+        languageBySlug = merged.languages.mapValues { $0.language }
+        languageTimes = merged.languages.mapValues { $0.updatedAt }
+        resetAt = merged.resetAt
+        scheduleSave(notify: false)
     }
 
     // MARK: Helpers

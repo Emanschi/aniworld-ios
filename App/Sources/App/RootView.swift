@@ -3,9 +3,11 @@ import SwiftUI
 /// Tab bar shell.
 struct RootView: View {
     @Environment(PlaybackCoordinator.self) private var playback
+    @Environment(LibrarySyncService.self) private var sync
 
     var body: some View {
         @Bindable var playback = playback
+        @Bindable var sync = sync
         TabView {
             HomeView()
                 .tabItem { Label("Start", systemImage: "house.fill") }
@@ -22,6 +24,12 @@ struct RootView: View {
         .fullScreenCover(item: $playback.activeSession) { session in
             PlayerScreen(session: session)
         }
+        .sheet(isPresented: $sync.showOnboarding, onDismiss: {
+            if !sync.isConfigured { sync.skipOnboarding() }
+        }) {
+            SyncOnboardingView()
+        }
+        .task { sync.start() }
     }
 }
 

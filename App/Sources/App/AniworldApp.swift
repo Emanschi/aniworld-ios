@@ -11,6 +11,7 @@ struct AniworldApp: App {
                 .environment(env.library)
                 .environment(env.settings)
                 .environment(env.playback)
+                .environment(env.sync)
                 .environment(\.aniworld, env.service)
                 .preferredColorScheme(.dark)
         }
@@ -24,6 +25,7 @@ struct AppEnvironment {
     let library: LibraryStore
     let settings: SettingsStore
     let playback: PlaybackCoordinator
+    let sync: LibrarySyncService
 
     static func live() -> AppEnvironment {
         make(service: AniworldClient())
@@ -34,7 +36,8 @@ struct AppEnvironment {
         let settings = SettingsStore()
         return AppEnvironment(
             service: service, library: library, settings: settings,
-            playback: PlaybackCoordinator(service: service, library: library, settings: settings)
+            playback: PlaybackCoordinator(service: service, library: library, settings: settings),
+            sync: LibrarySyncService(library: library)
         )
     }
 }
