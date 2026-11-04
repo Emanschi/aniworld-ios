@@ -13,17 +13,17 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
 
     private let http: HTTPClient
     private let resolver: StreamResolver
-    private let skipClient: AniSkipClient
+    private let skipClient: OnlineSkipClient
 
     public convenience init(baseURL: URL = AniworldClient.defaultBaseURL) {
         self.init(baseURL: baseURL, http: HTTPClient(), extractors: .default)
     }
 
-    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry, skipClient: AniSkipClient? = nil) {
+    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry, skipClient: OnlineSkipClient? = nil) {
         self.baseURL = baseURL
         self.http = http
         self.resolver = StreamResolver(http: http, extractors: extractors)
-        self.skipClient = skipClient ?? AniSkipClient(transport: http)
+        self.skipClient = skipClient ?? OnlineSkipClient(transport: http)
     }
 
     private func url(_ path: String) -> URL { Support.absoluteURL(path, base: baseURL)! }

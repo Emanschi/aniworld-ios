@@ -3,8 +3,8 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// Resolves anime titles to MyAnimeList IDs and queries AniSkip API v2 for intro/outro/recap intervals.
-public final class AniSkipClient: Sendable {
+/// Resolves anime titles to MyAnimeList IDs and queries the online skip API for intro/outro/recap intervals.
+public final class OnlineSkipClient: Sendable {
     private let transport: HTTPFetching
 
     private actor Cache {
@@ -164,7 +164,7 @@ public final class AniSkipClient: Sendable {
         }
     }
 
-    // MARK: - AniSkip API Query
+    // MARK: - Online Skip API Query
 
     private func fetchSkipTimes(malId: Int, episode: Int) async -> [SkipTime] {
         var components = URLComponents(string: "https://api.aniskip.com/v2/skip-times/\(malId)/\(episode)")
@@ -189,7 +189,7 @@ public final class AniSkipClient: Sendable {
             let response = try await transport.send(request)
             guard response.status == 200 else { return [] }
 
-            let decoded = try JSONDecoder().decode(AniSkipAPIResponse.self, from: response.data)
+            let decoded = try JSONDecoder().decode(OnlineSkipAPIResponse.self, from: response.data)
             guard decoded.found else { return [] }
 
             let times = decoded.results.compactMap { item -> SkipTime? in
@@ -217,19 +217,19 @@ public final class AniSkipClient: Sendable {
 
 // MARK: - API Decodables
 
-private struct AniSkipAPIResponse: Decodable {
+private struct OnlineSkipAPIResponse: Decodable {
     var found: Bool
-    var results: [AniSkipItem]
+    var results: [OnlineSkipItem]
 }
 
-private struct AniSkipItem: Decodable {
-    var interval: AniSkipInterval
+private struct OnlineSkipItem: Decodable {
+    var interval: OnlineSkipInterval
     var skipType: String
     var skipId: String
     var episodeLength: Double?
 }
 
-private struct AniSkipInterval: Decodable {
+private struct OnlineSkipInterval: Decodable {
     var startTime: Double
     var endTime: Double
 }
