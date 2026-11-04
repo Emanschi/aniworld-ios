@@ -10,7 +10,8 @@ struct PlayerPills: View {
         if vm.activeSkipSegment != nil {
             return true
         }
-        return vm.position < 240 && vm.duration > Double(vm.introSkipSeconds) + 120
+        // Fixed-jump fallback only when no intro time is known for this episode.
+        return !vm.hasKnownIntro && vm.position < 240 && vm.duration > Double(vm.introSkipSeconds) + 120
     }
 
     private var skipButtonTitle: String {

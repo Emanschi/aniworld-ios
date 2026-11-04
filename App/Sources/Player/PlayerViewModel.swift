@@ -36,6 +36,10 @@ final class PlayerViewModel {
     var hasItem = false
     var skipTimes: [SkipTime] = []
     var activeSkipSegment: SkipTime?
+    /// User-defined times that apply to the current episode (episode entry first, then season entry).
+    private(set) var customSkip: CustomSkip?
+    /// Shows the small "Kein Intro hinterlegt" card.
+    private(set) var noIntroPromptVisible = false
 
     // Custom-UI state
     var isBuffering = false
@@ -61,6 +65,10 @@ final class PlayerViewModel {
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
     @ObservationIgnored private var skipTimesTask: Task<Void, Never>?
+    /// Times from the bundled database for the current episode.
+    @ObservationIgnored private var databaseSkipTimes: [SkipTime] = []
+    @ObservationIgnored private var skipLookupDone = false
+    @ObservationIgnored private var introPromptHandledFor: String?
     @ObservationIgnored private var autoSkippedIds: Set<String> = []
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var timeObserver: Any?
@@ -173,8 +181,13 @@ final class PlayerViewModel {
         skipTimesTask?.cancel()
         countdown = nil
         skipTimes = []
+        databaseSkipTimes = []
+        skipLookupDone = false
+        customSkip = nil
+        noIntroPromptVisible = false
         activeSkipSegment = nil
         autoSkippedIds = []
+        recomputeSkipTimes()
         generation += 1
         let gen = generation
         player.pause()
@@ -222,7 +235,10 @@ final class PlayerViewModel {
                     episode: episode.number
                 )
                 guard gen == self.generation, !Task.isCancelled else { return }
-                self.skipTimes = times
+                self.databaseSkipTimes = times
+                self.skipLookupDone = true
+                self.recomputeSkipTimes()
+                self.evaluateIntroPrompt()
             }
 
             let start = startAt ?? savedStartPosition()
@@ -327,6 +343,7 @@ final class PlayerViewModel {
                 if let d = self.player.currentItem?.duration.seconds, d.isFinite, d > 0 { self.duration = d }
                 self.state = .playing
                 self.readyForSaving = true
+                self.evaluateIntroPrompt()
                 self.play()
                 self.updateNowPlaying()
                 Task { await self.prepareNext() }
@@ -532,6 +549,100 @@ final class PlayerViewModel {
     }
 
     // MARK: User actions
+
+    // MARK: Custom skip times
+
+    /// True when an intro (custom or database) is known for the current episode.
+    var hasKnownIntro: Bool {
+        settings?.enableSkipDetection == true && skipTimes.contains { $0.skipType.isOpening }
+    }
+
+    /// Merges custom and database times: custom intro/outro replace the database ones of the same kind.
+    private func recomputeSkipTimes() {
+        guard let library else { skipTimes = databaseSkipTimes; return }
+        let custom = library.customSkip(seriesSlug: series.slug, season: episode.season, episode: episode.number)
+        customSkip = custom
+        var result = databaseSkipTimes
+        if let custom {
+            if custom.hasIntro {
+                result.removeAll { $0.skipType.isOpening }
+            }
+            if custom.hasOutro {
+                result.removeAll { $0.skipType.isEnding }
+            }
+            if custom.hasIntro, let s = custom.introStart, let e = custom.introEnd {
+                result.append(SkipTime(skipId: "custom-op", skipType: .op,
+                                       interval: SkipInterval(startTime: s, endTime: e),
+                                       episodeLength: duration))
+            }
+            if custom.hasOutro, let s = custom.outroStart, let e = custom.outroEnd {
+                result.append(SkipTime(skipId: "custom-ed", skipType: .ed,
+                                       interval: SkipInterval(startTime: s, endTime: e),
+                                       episodeLength: duration))
+            }
+        }
+        result.sort { $0.interval.startTime < $1.interval.startTime }
+        skipTimes = result
+    }
+
+    /// Shows the "Kein Intro hinterlegt" card once per episode, if nothing is known.
+    private func evaluateIntroPrompt() {
+        guard !isShutdown, skipLookupDone, state == .playing,
+              introPromptHandledFor != episode.id,
+              settings?.enableSkipDetection == true,
+              library?.isSkipPromptMuted(seriesSlug: series.slug) == false,
+              !hasKnownIntro, position < 300 else { return }
+        introPromptHandledFor = episode.id
+        noIntroPromptVisible = true
+    }
+
+    func dismissIntroPrompt() {
+        noIntroPromptVisible = false
+    }
+
+    func muteIntroPromptForSeries() {
+        library?.muteSkipPrompt(seriesSlug: series.slug)
+        noIntroPromptVisible = false
+    }
+
+    /// Saves user-defined times. `wholeSeason` stores them for the entire season.
+    func saveCustomSkip(wholeSeason: Bool, introStart: Double?, introEnd: Double?,
+                        outroStart: Double?, outroEnd: Double?) {
+        guard let library else { return }
+        if wholeSeason {
+            // A season-wide entry must not stay hidden behind an older single-episode entry.
+            library.removeCustomSkip(key: CustomSkip.key(seriesSlug: series.slug, season: episode.season,
+                                                         episode: episode.number))
+        }
+        let entry = CustomSkip(seriesSlug: series.slug, season: episode.season,
+                               episode: wholeSeason ? nil : episode.number,
+                               introStart: introStart, introEnd: introEnd,
+                               outroStart: outroStart, outroEnd: outroEnd,
+                               updatedAt: Date())
+        library.setCustomSkip(entry)
+        autoSkippedIds.insert("custom-op")
+        autoSkippedIds.insert("custom-ed")
+        noIntroPromptVisible = false
+        introPromptHandledFor = episode.id
+        recomputeSkipTimes()
+    }
+
+    /// Deletes the custom entry that currently applies (episode or season).
+    func deleteCustomSkip() {
+        guard let library, let current = customSkip else { return }
+        library.removeCustomSkip(key: current.key)
+        recomputeSkipTimes()
+    }
+
+    /// Times shown as defaults in the editor: custom entry, else the database intro.
+    var editorDefaults: (introStart: Double?, introEnd: Double?, outroStart: Double?, outroEnd: Double?) {
+        if let custom = customSkip {
+            return (custom.introStart, custom.introEnd, custom.outroStart, custom.outroEnd)
+        }
+        let op = skipTimes.first { $0.skipType.isOpening }
+        let ed = skipTimes.first { $0.skipType.isEnding }
+        return (op?.interval.startTime, op?.interval.endTime, ed?.interval.startTime, ed?.interval.endTime)
+    }
 
     func skipActiveOrIntro() {
         if let active = activeSkipSegment {

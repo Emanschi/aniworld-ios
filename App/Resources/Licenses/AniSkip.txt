@@ -5,8 +5,8 @@ Herkunft der Daten
 Die Zeitmarken für "Intro überspringen", "Outro überspringen" und Rückblicke
 stammen von AniSkip. Sie werden von der AniSkip-Community eingereicht und
 bewertet. Diese App enthält eine daraus erstellte Offline-Datenbank
-(skip_database.json) und fragt fehlende Einträge bei der AniSkip-API
-(api.aniskip.com) ab.
+(skip_database.json). Es findet keine Online-Abfrage statt; fehlende
+Zeitmarken kann man selbst festlegen.
 
 Lizenzstatus
 Für die Zeitmarken-Daten bzw. den öffentlichen Datensatz

@@ -5,6 +5,7 @@ import AniworldKit
 struct PlayerOptionsPanel: View {
     let vm: PlayerViewModel
     let onClose: () -> Void
+    let onOpen: (PlayerPanel) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +36,31 @@ struct PlayerOptionsPanel: View {
                             }
                         }
                     }
+                    sectionTitle("Intro")
+                    Button {
+                        onOpen(.introEditor)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "scissors")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.accent)
+                            Text("Intro bearbeiten")
+                                .font(.system(.body, design: .rounded).weight(.medium))
+                                .foregroundStyle(.white)
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 13)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Theme.surfaceHigh.opacity(0.6))
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressableStyle())
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 20)

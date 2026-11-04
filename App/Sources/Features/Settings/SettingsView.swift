@@ -33,7 +33,7 @@ struct SettingsView: View {
                 Button("Alles zurücksetzen", role: .destructive) { library.resetAll() }
                 Button("Abbrechen", role: .cancel) {}
             } message: {
-                Text("Favoriten, Verlauf und Fortschritt werden unwiderruflich gelöscht.")
+                Text("Favoriten, Verlauf, Fortschritt und eigene Intro-Zeiten werden unwiderruflich gelöscht.")
             }
         }
     }
@@ -102,7 +102,7 @@ private struct SyncSection: View {
         } header: {
             Text("Synchronisierung")
         } footer: {
-            Text("Die Daten liegen in einem versteckten Ordner „.aniworld-sync“ in deinem iCloud Drive. Jedes Gerät muss einmal iCloud Drive auswählen („Öffnen“ tippen); danach werden Favoriten, Verlauf, Fortschritt und Sprachen automatisch abgeglichen.")
+            Text("Die Daten liegen in einem versteckten Ordner „.aniworld-sync“ in deinem iCloud Drive. Jedes Gerät muss einmal iCloud Drive auswählen („Öffnen“ tippen); danach werden Favoriten, Verlauf, Fortschritt, Sprachen und eigene Intro-Zeiten automatisch abgeglichen.")
         }
     }
 }
@@ -176,12 +176,17 @@ private struct PlaybackSection: View {
                     Text("\(settings.introSkipSeconds) s").foregroundStyle(Theme.textSecondary)
                 }
             }
+            NavigationLink {
+                CustomSkipListView()
+            } label: {
+                Label("Eigene Intro-Zeiten", systemImage: "scissors")
+            }
             Toggle("Streams prüfen", isOn: $settings.verifyStreams)
                 .tint(Theme.accent)
         } header: {
             Text("Wiedergabe")
         } footer: {
-            Text("Erkennt automatisch Intros und Outros und blendet einen passenden Sprung-Button ein. Wenn keine genauen Zeitmarken vorliegen, wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
+            Text("Erkennt automatisch Intros und Outros und blendet einen passenden Sprung-Button ein. Die Zeitmarken stammen aus einer mitgelieferten Offline-Datenbank oder von dir („Eigene Intro-Zeiten“); ohne Zeitmarken wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
         }
     }
 }

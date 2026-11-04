@@ -13,7 +13,7 @@ Das Projekt ist ein Port des Python-Tools [dxmoc/aniworld-cli](https://github.co
 - Sprachwahl: Deutsch (GerDub), Deutsch mit Untertiteln (GerSub), Englisch mit Untertiteln (EngSub)
 - Hoster VOE und Vidmoly, mit automatischem Fallback und Stream-Prüfung vor dem Abspielen
 - Nativer Player mit Bild-in-Bild, AirPlay und Wiedergabe im Hintergrund
-- Intro und Outro überspringen (automatische Erkennung mit genauen Zeitmarken oder manueller Sprung)
+- Intro und Outro überspringen (Zeitmarken aus einer mitgelieferten Offline-Datenbank, eigene Intro-Zeiten pro Folge oder Staffel, sonst manueller Sprung)
 - Autoplay der nächsten Folge
 - Weiterschauen-Verlauf
 - Favoriten

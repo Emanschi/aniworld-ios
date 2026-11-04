@@ -23,6 +23,10 @@ struct LibraryState: Codable, Equatable, Sendable {
     var languages: [String: LanguageChoice] = [:]
     /// Time of the last "reset everything".
     var resetAt: Date?
+    /// User-defined intro/outro times (key = `CustomSkip.key`).
+    var customSkips: [CustomSkip] = []
+    /// key → time the custom entry was removed.
+    var customSkipTombstones: [String: Date] = [:]
 }
 
 /// What one device writes to `.aniworld-sync/devices/<deviceID>.json`.
@@ -41,6 +45,8 @@ struct SyncSnapshot: Codable, Sendable {
     var progress: [String: EpisodeProgress]
     var languages: [String: LanguageChoice]
     var resetAt: Date?
+    var customSkips: [CustomSkip]
+    var customSkipTombstones: [String: Date]
 
     init(deviceID: String, deviceName: String, writtenAt: Date = Date(), state: LibraryState) {
         schemaVersion = Self.currentSchemaVersion
@@ -55,18 +61,22 @@ struct SyncSnapshot: Codable, Sendable {
         progress = state.progress
         languages = state.languages
         resetAt = state.resetAt
+        customSkips = state.customSkips
+        customSkipTombstones = state.customSkipTombstones
     }
 
     var state: LibraryState {
         LibraryState(favorites: favorites, favoriteTombstones: favoriteTombstones,
                      history: history, historyTombstones: historyTombstones,
                      historyClearedAt: historyClearedAt, progress: progress,
-                     languages: languages, resetAt: resetAt)
+                     languages: languages, resetAt: resetAt,
+                     customSkips: customSkips, customSkipTombstones: customSkipTombstones)
     }
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion, deviceID, deviceName, writtenAt, favorites, favoriteTombstones
         case history, historyTombstones, historyClearedAt, progress, languages, resetAt
+        case customSkips, customSkipTombstones
     }
 
     init(from decoder: Decoder) throws {
@@ -83,5 +93,7 @@ struct SyncSnapshot: Codable, Sendable {
         progress = try c.decodeIfPresent([String: EpisodeProgress].self, forKey: .progress) ?? [:]
         languages = try c.decodeIfPresent([String: LanguageChoice].self, forKey: .languages) ?? [:]
         resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
+        customSkips = try c.decodeIfPresent([CustomSkip].self, forKey: .customSkips) ?? []
+        customSkipTombstones = try c.decodeIfPresent([String: Date].self, forKey: .customSkipTombstones) ?? [:]
     }
 }

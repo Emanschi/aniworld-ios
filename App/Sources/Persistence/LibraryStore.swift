@@ -17,6 +17,10 @@ final class LibraryStore {
     private(set) var progressByEpisode: [String: EpisodeProgress] = [:]
     /// Preferred language per series slug.
     private(set) var languageBySlug: [String: StreamLanguage] = [:]
+    /// User-defined intro/outro times, keyed by `CustomSkip.key`.
+    private(set) var customSkips: [String: CustomSkip] = [:]
+    /// Series for which the "Kein Intro hinterlegt" prompt is switched off (local only).
+    private(set) var mutedSkipPromptSlugs: Set<String> = []
 
     // Sync bookkeeping (not shown in the UI).
     @ObservationIgnored private var languageTimes: [String: Date] = [:]
@@ -24,6 +28,7 @@ final class LibraryStore {
     @ObservationIgnored private var historyTombstones: [String: Date] = [:]
     @ObservationIgnored private var historyClearedAt: Date?
     @ObservationIgnored private var resetAt: Date?
+    @ObservationIgnored private var customSkipTombstones: [String: Date] = [:]
 
     /// Called (on the main actor) after every local change made through the public API.
     /// Not called for changes applied by `apply(merged:)`.
@@ -45,12 +50,16 @@ final class LibraryStore {
         var historyTombstones: [String: Date] = [:]
         var historyClearedAt: Date?
         var resetAt: Date?
+        var customSkips: [CustomSkip] = []
+        var customSkipTombstones: [String: Date] = [:]
+        var mutedSkipPromptSlugs: [String] = []
 
         init() {}
 
         enum CodingKeys: String, CodingKey {
             case favorites, history, progress, languages
             case languageTimes, favoriteTombstones, historyTombstones, historyClearedAt, resetAt
+            case customSkips, customSkipTombstones, mutedSkipPromptSlugs
         }
 
         init(from decoder: Decoder) throws {
@@ -64,6 +73,9 @@ final class LibraryStore {
             historyTombstones = try c.decodeIfPresent([String: Date].self, forKey: .historyTombstones) ?? [:]
             historyClearedAt = try c.decodeIfPresent(Date.self, forKey: .historyClearedAt)
             resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
+            customSkips = try c.decodeIfPresent([CustomSkip].self, forKey: .customSkips) ?? []
+            customSkipTombstones = try c.decodeIfPresent([String: Date].self, forKey: .customSkipTombstones) ?? [:]
+            mutedSkipPromptSlugs = try c.decodeIfPresent([String].self, forKey: .mutedSkipPromptSlugs) ?? []
         }
     }
 
@@ -105,6 +117,9 @@ final class LibraryStore {
         historyTombstones = snap.historyTombstones
         historyClearedAt = snap.historyClearedAt
         resetAt = snap.resetAt
+        customSkips = Dictionary(snap.customSkips.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        customSkipTombstones = snap.customSkipTombstones
+        mutedSkipPromptSlugs = Set(snap.mutedSkipPromptSlugs)
     }
 
     /// Schedules a debounced disk write. `notify: false` is used for changes that came from sync.
@@ -133,6 +148,9 @@ final class LibraryStore {
         snap.historyTombstones = historyTombstones
         snap.historyClearedAt = historyClearedAt
         snap.resetAt = resetAt
+        snap.customSkips = customSkips.values.sorted { $0.key < $1.key }
+        snap.customSkipTombstones = customSkipTombstones
+        snap.mutedSkipPromptSlugs = mutedSkipPromptSlugs.sorted()
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? data.write(to: fileURL, options: [.atomic])
     }
@@ -270,7 +288,62 @@ final class LibraryStore {
         scheduleSave()
     }
 
-    /// Wipes favorites, history and progress.
+    // MARK: Custom skip times
+
+    /// Entry that applies to an episode: the episode's own entry first, then the season's.
+    func customSkip(seriesSlug: String, season: Int, episode: Int) -> CustomSkip? {
+        customSkips[CustomSkip.key(seriesSlug: seriesSlug, season: season, episode: episode)]
+            ?? customSkips[CustomSkip.key(seriesSlug: seriesSlug, season: season, episode: nil)]
+    }
+
+    /// All entries, sorted by series and position for display.
+    var customSkipList: [CustomSkip] {
+        customSkips.values.sorted { a, b in
+            if a.seriesSlug != b.seriesSlug { return a.seriesSlug < b.seriesSlug }
+            if a.season != b.season { return a.season < b.season }
+            return (a.episode ?? -1) < (b.episode ?? -1)
+        }
+    }
+
+    func setCustomSkip(_ skip: CustomSkip) {
+        var skip = skip
+        skip.updatedAt = Date()
+        customSkips[skip.key] = skip
+        customSkipTombstones[skip.key] = nil
+        scheduleSave()
+    }
+
+    func removeCustomSkip(key: String) {
+        guard customSkips[key] != nil else { return }
+        customSkips[key] = nil
+        customSkipTombstones[key] = Date()
+        scheduleSave()
+    }
+
+    func isSkipPromptMuted(seriesSlug: String) -> Bool {
+        mutedSkipPromptSlugs.contains(seriesSlug)
+    }
+
+    func muteSkipPrompt(seriesSlug: String) {
+        guard !mutedSkipPromptSlugs.contains(seriesSlug) else { return }
+        mutedSkipPromptSlugs.insert(seriesSlug)
+        // Local preference: no sync notification needed, only persistence.
+        scheduleSave(notify: false)
+    }
+
+    func resetMutedSkipPrompts() {
+        guard !mutedSkipPromptSlugs.isEmpty else { return }
+        mutedSkipPromptSlugs = []
+        scheduleSave(notify: false)
+    }
+
+    /// Best known title for a series slug (favorites, then history), if any.
+    func knownTitle(forSlug slug: String) -> String? {
+        favorites.first { $0.series.slug == slug }?.series.title
+            ?? history.first { $0.series.slug == slug }?.series.title
+    }
+
+    /// Wipes favorites, history, progress and custom skip times.
     func resetAll() {
         favorites = []
         history = []
@@ -280,6 +353,9 @@ final class LibraryStore {
         favoriteTombstones = [:]
         historyTombstones = [:]
         historyClearedAt = nil
+        customSkips = [:]
+        customSkipTombstones = [:]
+        mutedSkipPromptSlugs = []
         resetAt = Date()
         onChange?()
         flush()
@@ -297,7 +373,9 @@ final class LibraryStore {
             favorites: favorites, favoriteTombstones: favoriteTombstones,
             history: history, historyTombstones: historyTombstones,
             historyClearedAt: historyClearedAt, progress: progressByEpisode,
-            languages: langs, resetAt: resetAt
+            languages: langs, resetAt: resetAt,
+            customSkips: customSkips.values.sorted { $0.key < $1.key },
+            customSkipTombstones: customSkipTombstones
         )
     }
 
@@ -313,6 +391,8 @@ final class LibraryStore {
         languageBySlug = merged.languages.mapValues { $0.language }
         languageTimes = merged.languages.mapValues { $0.updatedAt }
         resetAt = merged.resetAt
+        customSkips = Dictionary(merged.customSkips.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        customSkipTombstones = merged.customSkipTombstones
         scheduleSave(notify: false)
     }
 

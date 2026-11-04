@@ -92,6 +92,12 @@ private struct PlayerContentView: View {
             lockLayer
             if isPlaying && !locked {
                 PlayerPills(vm: vm, controlsShown: showFull)
+                if vm.noIntroPromptVisible && panel == nil {
+                    PlayerIntroPrompt(vm: vm, controlsShown: showFull) {
+                        vm.dismissIntroPrompt()
+                        openPanel(.introEditor)
+                    }
+                }
             }
             stateLayer
             if let seconds = vm.countdown {
@@ -209,7 +215,7 @@ private struct PlayerContentView: View {
     @ViewBuilder
     private var panelLayer: some View {
         if let panel {
-            PlayerPanelHost(panel: panel, vm: vm, onClose: closePanel)
+            PlayerPanelHost(panel: panel, vm: vm, onClose: closePanel, onOpen: { openPanel($0) })
         }
     }
 

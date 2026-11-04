@@ -6,6 +6,7 @@ enum PlayerPanel: Hashable {
     case speed
     case episodes
     case options
+    case introEditor
 }
 
 /// Dimmed backdrop plus the panel for the selected kind.
@@ -13,6 +14,7 @@ struct PlayerPanelHost: View {
     let panel: PlayerPanel
     let vm: PlayerViewModel
     let onClose: () -> Void
+    let onOpen: (PlayerPanel) -> Void
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -43,7 +45,9 @@ struct PlayerPanelHost: View {
         case .episodes:
             PlayerEpisodePanel(vm: vm, onClose: onClose)
         case .options:
-            PlayerOptionsPanel(vm: vm, onClose: onClose)
+            PlayerOptionsPanel(vm: vm, onClose: onClose, onOpen: onOpen)
+        case .introEditor:
+            PlayerIntroEditorPanel(vm: vm, onClose: onClose)
         }
     }
 }

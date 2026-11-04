@@ -34,3 +34,34 @@ struct FavoriteEntry: Codable, Hashable, Identifiable, Sendable {
     var addedAt: Date
     var id: String { series.slug }
 }
+
+/// User-defined intro/outro times for one episode or a whole season of a series.
+/// Takes precedence over the bundled skip database.
+struct CustomSkip: Codable, Hashable, Identifiable, Sendable {
+    var seriesSlug: String
+    var season: Int
+    /// nil = applies to the whole season.
+    var episode: Int?
+    var introStart: Double?
+    var introEnd: Double?
+    var outroStart: Double?
+    var outroEnd: Double?
+    var updatedAt: Date
+
+    var id: String { key }
+    var key: String { Self.key(seriesSlug: seriesSlug, season: season, episode: episode) }
+
+    static func key(seriesSlug: String, season: Int, episode: Int?) -> String {
+        "\(seriesSlug)|s\(season)|e\(episode.map { String($0) } ?? "all")"
+    }
+
+    var hasIntro: Bool {
+        guard let s = introStart, let e = introEnd else { return false }
+        return e > s
+    }
+
+    var hasOutro: Bool {
+        guard let s = outroStart, let e = outroEnd else { return false }
+        return e > s
+    }
+}

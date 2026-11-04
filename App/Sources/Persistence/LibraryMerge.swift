@@ -9,6 +9,7 @@ import Foundation
 /// - history: per slug the newest `updatedAt` wins unless a tombstone / `historyClearedAt` is newer;
 /// - progress: per episode id newer `updatedAt` wins (equal time: watched wins, then larger position);
 /// - languages: per slug newest wins;
+/// - custom skip times: per key the newest `updatedAt` wins unless a tombstone is newer;
 /// - `resetAt`: the newest reset wins and everything stamped at or before it is dropped.
 ///
 /// Scenarios:
@@ -88,10 +89,36 @@ enum LibraryMerge {
                 }
             }
         }
+
+        // Custom skip times (own intro/outro): newest entry per key wins, tombstones delete.
+        let skipTombs = maxDates(states.map { $0.customSkipTombstones })
+        var bestSkip: [String: CustomSkip] = [:]
+        for state in states {
+            for skip in state.customSkips where skip.updatedAt > reset {
+                if let current = bestSkip[skip.key] {
+                    if isBetter(skip, than: current) { bestSkip[skip.key] = skip }
+                } else {
+                    bestSkip[skip.key] = skip
+                }
+            }
+        }
+        out.customSkips = bestSkip.values
+            .filter { $0.updatedAt > (skipTombs[$0.key] ?? .distantPast) }
+            .sorted { $0.key < $1.key }
+        out.customSkipTombstones = skipTombs.filter { $0.value > tombstoneCutoff }
         return out
     }
 
     // MARK: Helpers
+
+    private static func isBetter(_ a: CustomSkip, than b: CustomSkip) -> Bool {
+        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
+        // Deterministic tie-break so the merge stays commutative.
+        let ta = [a.introStart ?? -1, a.introEnd ?? -1, a.outroStart ?? -1, a.outroEnd ?? -1]
+        let tb = [b.introStart ?? -1, b.introEnd ?? -1, b.outroStart ?? -1, b.outroEnd ?? -1]
+        for (x, y) in zip(ta, tb) where x != y { return x > y }
+        return false
+    }
 
     private static func maxDates(_ maps: [[String: Date]]) -> [String: Date] {
         var result: [String: Date] = [:]

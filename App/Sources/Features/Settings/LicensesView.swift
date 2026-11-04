@@ -36,7 +36,7 @@ enum LicenseCatalog {
         ),
         LicenseItem(
             name: "AniSkip",
-            role: "Intro-/Outro-Zeitmarken (Offline-Datenbank und API)",
+            role: "Intro-/Outro-Zeitmarken (mitgelieferte Offline-Datenbank)",
             copyright: "Daten: AniSkip und die AniSkip-Community\nAniSkip-Code: © 2021 Lexes Jan Mantiquilla",
             license: "Daten ohne ausdrückliche Lizenz (Quellenangabe)",
             url: URL(string: "https://github.com/aniskip")!,
