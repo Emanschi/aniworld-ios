@@ -373,7 +373,7 @@ final class PlayerViewModel {
 
     /// Loads the next episode in place (same screen, new item).
     func playNext() {
-        guard let (next, episodes) = nextInfo, let library else { return }
+        guard case let (next, episodes)? = nextInfo, let library else { return }
         countdownTask?.cancel()
         countdown = nil
         saveProgress()

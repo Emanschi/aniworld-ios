@@ -54,7 +54,7 @@ final class PlaybackCoordinator {
             guard let self else { return }
             let next = await self.nextEpisode(after: entry.episode, in: entry.series, seasonEpisodes: [])
             if Task.isCancelled { return }
-            if let (episode, episodes) = next {
+            if case let (episode, episodes)? = next {
                 self.play(series: entry.series, episode: episode, seasonEpisodes: episodes,
                           language: entry.language, fromStart: true)
             } else {
