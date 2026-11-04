@@ -4,6 +4,7 @@
     "date": "2026-11-04",
     "notes": [
       "iCloud-Sync: Favoriten, Verlauf und Fortschritt lassen sich über einen Ordner in iCloud Drive auf mehreren Geräten abgleichen.",
+      "Die Anleitung zur Ordnerwahl für den iCloud-Sync ist jetzt korrekt: Ordner in iCloud Drive anlegen, öffnen und „Öffnen“ tippen.",
       "Du kannst jetzt eigene Intro- und Outro-Zeiten für Serien festlegen.",
       "„Intro überspringen“ erscheint jetzt auch ohne geöffnetes Menü und lässt sich nur einmal drücken.",
       "Neuer Button „Outro überspringen“ – mit Autoplay geht es direkt zur nächsten Folge.",

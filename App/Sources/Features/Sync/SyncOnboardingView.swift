@@ -23,7 +23,7 @@ struct SyncOnboardingView: View {
 
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "1.circle.fill").foregroundStyle(Theme.accent)
-                    Text("Wähle im nächsten Schritt „iCloud Drive“ und tippe auf „Öffnen“.")
+                    Text("Lege im nächsten Schritt in iCloud Drive einen Ordner an (z. B. „AniWorld“), öffne ihn und tippe auf „Öffnen“. Auf weiteren Geräten wählst du denselben Ordner.")
                         .font(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

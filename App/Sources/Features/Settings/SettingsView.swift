@@ -104,7 +104,7 @@ private struct SyncSection: View {
         } header: {
             Text("Synchronisierung")
         } footer: {
-            Text("Die Daten liegen in einem versteckten Ordner „.aniworld-sync“ in deinem iCloud Drive. Jedes Gerät muss einmal iCloud Drive auswählen („Öffnen“ tippen); danach werden Favoriten, Verlauf, Fortschritt, Sprachen und eigene Intro-Zeiten automatisch abgeglichen.")
+            Text("Die Daten liegen in einem versteckten Unterordner „.aniworld-sync“ des gewählten Ordners. Wähle auf jedem Gerät denselben Ordner in iCloud Drive (z. B. „AniWorld“; der oberste iCloud-Drive-Ordner selbst geht nicht); danach werden Favoriten, Verlauf, Fortschritt, Sprachen und eigene Intro-Zeiten automatisch abgeglichen.")
         }
     }
 }
