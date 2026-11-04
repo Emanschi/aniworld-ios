@@ -11,6 +11,7 @@ struct SettingsView: View {
             Form {
                 PrioritySection()
                 PlaybackSection()
+                SyncSection()
                 dataSection
                 InfoSection()
             }
@@ -41,6 +42,67 @@ struct SettingsView: View {
         Section("Daten") {
             Button("Verlauf löschen", role: .destructive) { confirmClearHistory = true }
             Button("Alles zurücksetzen", role: .destructive) { confirmReset = true }
+        }
+    }
+}
+
+// MARK: Sync
+
+private struct SyncSection: View {
+    @Environment(LibrarySyncService.self) private var sync
+    @State private var showPicker = false
+
+    private func relative(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "de_DE")
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private var statusText: String {
+        if !sync.isConfigured { return "Nicht eingerichtet" }
+        if let error = sync.lastError { return "Fehler: \(error)" }
+        if sync.isSyncing { return "Synchronisiere …" }
+        if let last = sync.lastSyncAt { return "Zuletzt synchronisiert \(relative(last))" }
+        return "Noch nicht synchronisiert"
+    }
+
+    var body: some View {
+        Section {
+            HStack {
+                Label("Status", systemImage: "icloud")
+                Spacer()
+                Text(statusText)
+                    .font(.footnote)
+                    .foregroundStyle(sync.lastError == nil ? Theme.textSecondary : Color.red)
+                    .multilineTextAlignment(.trailing)
+            }
+            ForEach(sync.devices) { device in
+                HStack {
+                    Label(device.name.isEmpty ? "Unbekanntes Gerät" : device.name, systemImage: "iphone")
+                    Spacer()
+                    Text(relative(device.writtenAt)).font(.footnote).foregroundStyle(Theme.textSecondary)
+                }
+            }
+            Button(sync.isConfigured ? "Ordner ändern" : "iCloud-Ordner wählen") { showPicker = true }
+                .sheet(isPresented: $showPicker) {
+                    FolderPicker(onPick: { url in
+                        showPicker = false
+                        sync.configure(pickedFolder: url)
+                    }, onCancel: {
+                        showPicker = false
+                    })
+                    .ignoresSafeArea()
+                }
+            if sync.isConfigured {
+                Button("Jetzt synchronisieren") { sync.syncNow() }
+                    .disabled(sync.isSyncing)
+                Button("Synchronisierung deaktivieren", role: .destructive) { sync.disable() }
+            }
+        } header: {
+            Text("Synchronisierung")
+        } footer: {
+            Text("Die Daten liegen in einem versteckten Ordner „.aniworld-sync“ in deinem iCloud Drive. Jedes Gerät muss einmal iCloud Drive auswählen („Öffnen“ tippen); danach werden Favoriten, Verlauf, Fortschritt und Sprachen automatisch abgeglichen.")
         }
     }
 }
