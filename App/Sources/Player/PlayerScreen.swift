@@ -1,10 +1,10 @@
 import SwiftUI
-import AVKit
+import AVFoundation
+import UIKit
 import AniworldKit
 
-/// Full-screen player: native `AVPlayerViewController` with a SwiftUI overlay on top.
-/// The overlay follows the visibility of the native transport controls, so it never
-/// competes with their tap handling.
+/// Full-screen player with our own Netflix-style controls. The video is rendered by
+/// `PlayerSurfaceView`; all controls live in `Player/Controls`.
 struct PlayerScreen: View {
     let session: PlaybackSession
 
@@ -24,6 +24,7 @@ struct PlayerScreen: View {
             }
         }
         .statusBarHidden(true)
+        .persistentSystemOverlays(.hidden)
         .task {
             guard viewModel == nil else { return }
             let vm = PlayerViewModel(session: session)
@@ -47,317 +48,235 @@ struct PlayerScreen: View {
 
 // MARK: - Content
 
+private struct HideKey: Hashable {
+    var token: Int
+    var shown: Bool
+    var allowed: Bool
+}
+
 private struct PlayerContentView: View {
     let vm: PlayerViewModel
 
+    @State private var controlsShown = true
+    @State private var activityToken = 0
+    @State private var panel: PlayerPanel?
+    @State private var locked = false
+    @State private var bubble: SeekBubble?
+    @State private var bubbleTask: Task<Void, Never>?
+
     private var isPlaying: Bool { vm.state == .playing }
-    /// Chrome is shown with the native controls, while paused, loading or on error.
-    private var showChrome: Bool { vm.controlsVisible || vm.isPaused || !isPlaying }
+
+    private var isLoading: Bool {
+        if case .loading = vm.state { return true }
+        return false
+    }
+
+    /// Full controls are visible.
+    private var showFull: Bool {
+        isPlaying && !locked && vm.countdown == nil && (controlsShown || vm.isPaused || vm.isScrubbing)
+    }
+
+    private var autoHideAllowed: Bool {
+        isPlaying && !vm.isPaused && !vm.isScrubbing && panel == nil
+    }
 
     var body: some View {
         ZStack {
-            if vm.hasItem {
-                NativePlayerView(
-                    player: vm.player,
-                    onControlsVisibility: { vm.controlsVisible = $0 },
-                    onPictureInPicture: { vm.isPictureInPictureActive = $0 }
-                )
-                .ignoresSafeArea()
+            Color.black.ignoresSafeArea()
+            surface
+            if isPlaying {
+                PlayerGestureLayer(onTap: handleTap, onDoubleTap: handleDoubleTap)
             }
-
-            switch vm.state {
-            case .loading(let text):
-                loadingView(text)
-            case .error(let message):
-                errorView(message)
-            case .playing:
-                EmptyView()
+            feedbackLayer
+            controlsLayer
+            lockLayer
+            if isPlaying && !locked {
+                PlayerPills(vm: vm, controlsShown: showFull)
             }
-
-            chrome
-                .opacity(showChrome ? 1 : 0)
-                .allowsHitTesting(showChrome)
-                .animation(.easeInOut(duration: 0.2), value: showChrome)
-
+            stateLayer
             if let seconds = vm.countdown {
-                countdownCard(seconds)
+                PlayerCountdownCard(vm: vm, seconds: seconds)
             }
+            panelLayer
+        }
+        .environment(\.colorScheme, .dark)
+        .task(id: HideKey(token: activityToken, shown: controlsShown, allowed: autoHideAllowed)) {
+            guard controlsShown, autoHideAllowed else { return }
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            if Task.isCancelled { return }
+            withAnimation(.easeInOut(duration: 0.25)) { controlsShown = false }
+        }
+        .onChange(of: vm.isPaused) { _, paused in
+            if paused { controlsShown = true }
+            bump()
+        }
+        .onChange(of: controlsShown) { _, shown in
+            vm.controlsVisible = shown
+        }
+        .onChange(of: vm.episode.id) { _, _ in
+            controlsShown = true
+            bump()
+        }
+        .onDisappear { bubbleTask?.cancel() }
+    }
+
+    // MARK: Layers
+
+    @ViewBuilder
+    private var surface: some View {
+        if vm.hasItem {
+            PlayerSurfaceView(
+                player: vm.player,
+                videoGravity: vm.videoGravity,
+                onLayerReady: { layer in vm.attachLayer(layer) }
+            )
+            .ignoresSafeArea()
         }
     }
 
-    // MARK: Chrome (top bar + bottom-trailing buttons)
-
-    private var chrome: some View {
-        VStack(spacing: 0) {
-            topBar
-            Spacer(minLength: 0)
-            if isPlaying { bottomButtons }
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 96)
-    }
-
-    private var topBar: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Button {
-                vm.close()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .bold))
-                    .frame(width: 38, height: 38)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-            .accessibilityLabel("Schließen")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(vm.series.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text(episodeLine)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.8))
-                    .lineLimit(1)
-            }
-            .shadow(color: .black.opacity(0.6), radius: 3)
-
-            Spacer(minLength: 8)
-
-            if !vm.availableLanguages.isEmpty || !vm.availableHosters.isEmpty {
-                optionsMenu
-            }
-        }
-        .foregroundStyle(.white)
-    }
-
-    private var episodeLine: String {
-        vm.episode.title.isEmpty ? vm.episode.code : "\(vm.episode.code) – \(vm.episode.title)"
-    }
-
-    private var optionsMenu: some View {
-        Menu {
-            if !vm.availableLanguages.isEmpty {
-                Section("Sprache") {
-                    ForEach(vm.availableLanguages, id: \.self) { language in
-                        Button {
-                            vm.switchLanguage(language)
-                        } label: {
-                            if language == vm.currentLanguage {
-                                Label(language.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(language.displayName)
-                            }
-                        }
-                    }
-                }
-            }
-            if !vm.availableHosters.isEmpty {
-                Section("Hoster") {
-                    ForEach(vm.availableHosters, id: \.self) { name in
-                        Button {
-                            vm.switchHoster(name)
-                        } label: {
-                            if name == vm.currentHoster {
-                                Label(name, systemImage: "checkmark")
-                            } else {
-                                Text(name)
-                            }
-                        }
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .bold))
-                .frame(width: 38, height: 38)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .accessibilityLabel("Sprache und Hoster")
-    }
-
-    private var showSkipIntro: Bool {
-        vm.position < 240 && vm.duration > Double(vm.introSkipSeconds) + 120
-    }
-
-    private var showNextButton: Bool {
-        vm.hasNext && vm.countdown == nil && vm.duration > 0 && vm.duration - vm.position < 120
-    }
-
-    private var bottomButtons: some View {
-        HStack(spacing: 10) {
-            Spacer(minLength: 0)
-            if showSkipIntro {
-                pillButton("Intro überspringen", systemImage: "forward.fill") { vm.skipIntro() }
-            }
-            if showNextButton {
-                pillButton("Nächste Folge", systemImage: "forward.end.fill") { vm.playNext() }
-            }
+    private var feedbackLayer: some View {
+        ZStack {
+            SeekFeedbackView(bubble: bubble)
+            bufferingIndicator
         }
     }
 
-    private func pillButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(.ultraThinMaterial, in: Capsule())
-        }
-    }
-
-    // MARK: States
-
-    private func loadingView(_ text: String) -> some View {
-        VStack(spacing: 14) {
+    @ViewBuilder
+    private var bufferingIndicator: some View {
+        if isPlaying && vm.isBuffering && !showFull {
             ProgressView()
                 .progressViewStyle(.circular)
                 .tint(.white)
-                .scaleEffect(1.3)
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.85))
+                .scaleEffect(1.6)
+                .allowsHitTesting(false)
         }
-        .padding(24)
-        .allowsHitTesting(false)
     }
 
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 34))
-                .foregroundStyle(.yellow)
-            Text("Wiedergabe nicht möglich")
-                .font(.headline)
-            Text(message)
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.8))
-            VStack(spacing: 10) {
-                Button { vm.retry() } label: {
-                    Text("Erneut versuchen").frame(maxWidth: .infinity)
+    private var controlsLayer: some View {
+        PlayerControlsOverlay(
+            vm: vm,
+            onPanel: { openPanel($0) },
+            onLock: lock,
+            onActivity: bump
+        )
+        .opacity(showFull ? 1 : 0)
+        .allowsHitTesting(showFull)
+        .accessibilityHidden(!showFull)
+        .animation(.easeInOut(duration: 0.25), value: showFull)
+    }
+
+    @ViewBuilder
+    private var lockLayer: some View {
+        if isPlaying && locked {
+            HStack {
+                VStack {
+                    Spacer(minLength: 0)
+                    PlayerIconButton(systemName: "lock.open.fill", label: "Steuerung entsperren",
+                                     size: 52, iconSize: 20) {
+                        unlock()
+                    }
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.borderedProminent)
-                Button { vm.tryOtherHoster() } label: {
-                    Text("Anderen Hoster versuchen").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                Button { vm.close() } label: {
-                    Text("Schließen").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(.white)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: 320)
+            .padding(.leading, 12)
+            .opacity(controlsShown ? 1 : 0)
+            .allowsHitTesting(controlsShown)
+            .animation(.easeInOut(duration: 0.25), value: controlsShown)
         }
-        .foregroundStyle(.white)
-        .padding(24)
     }
 
-    private func countdownCard(_ seconds: Int) -> some View {
-        VStack(spacing: 12) {
-            Text("Nächste Folge in \(seconds) s")
-                .font(.headline)
-            HStack(spacing: 10) {
-                Button { vm.cancelCountdown() } label: {
-                    Text("Abbrechen").padding(.horizontal, 6)
+    @ViewBuilder
+    private var stateLayer: some View {
+        switch vm.state {
+        case .loading(let text):
+            ZStack {
+                PlayerLoadingView(series: vm.series, text: text)
+                VStack {
+                    PlayerTopBar(vm: vm, showsTools: false, onOptions: {})
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.bordered)
-                .tint(.white)
-                Button { vm.playNext() } label: {
-                    Text("Jetzt abspielen").padding(.horizontal, 6)
-                }
-                .buttonStyle(.borderedProminent)
             }
+        case .error(let message):
+            PlayerErrorView(vm: vm, message: message)
+        case .playing:
+            EmptyView()
         }
-        .foregroundStyle(.white)
-        .padding(20)
-        .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-// MARK: - Native player
-
-private struct NativePlayerView: UIViewControllerRepresentable {
-    let player: AVPlayer
-    var onControlsVisibility: (Bool) -> Void
-    var onPictureInPicture: (Bool) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let vc = AVPlayerViewController()
-        vc.player = player
-        vc.delegate = context.coordinator
-        vc.showsPlaybackControls = true
-        vc.allowsPictureInPicturePlayback = true
-        vc.canStartPictureInPictureAutomaticallyFromInline = true
-        vc.updatesNowPlayingInfoCenter = true
-        vc.entersFullScreenWhenPlaybackBegins = false
-        vc.videoGravity = .resizeAspect
-        vc.view.backgroundColor = .black
-        context.coordinator.onControlsVisibility = onControlsVisibility
-        context.coordinator.onPictureInPicture = onPictureInPicture
-        context.coordinator.installTapObserver(on: vc.view)
-        return vc
     }
 
-    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
-        if vc.player !== player { vc.player = player }
-        context.coordinator.onControlsVisibility = onControlsVisibility
-        context.coordinator.onPictureInPicture = onPictureInPicture
+    @ViewBuilder
+    private var panelLayer: some View {
+        if let panel {
+            PlayerPanelHost(panel: panel, vm: vm, onClose: closePanel)
+        }
     }
 
-    @MainActor
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate, UIGestureRecognizerDelegate {
-        var onControlsVisibility: (Bool) -> Void = { _ in }
-        var onPictureInPicture: (Bool) -> Void = { _ in }
-        private var hideTask: Task<Void, Never>?
+    // MARK: Actions
 
-        /// iOS has no public callback for the native controls' visibility, so we watch taps
-        /// (without swallowing them) and mirror the controls' ~4 s auto-hide.
-        func installTapObserver(on view: UIView) {
-            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-            tap.cancelsTouchesInView = false
-            tap.delegate = self
-            view.addGestureRecognizer(tap)
-            showControls()
-        }
+    private func bump() {
+        activityToken += 1
+    }
 
-        @objc private func handleTap() {
-            showControls()
+    private func handleTap() {
+        if panel != nil {
+            closePanel()
+            return
         }
+        withAnimation(.easeInOut(duration: 0.25)) { controlsShown.toggle() }
+        bump()
+    }
 
-        private func showControls() {
-            onControlsVisibility(true)
-            hideTask?.cancel()
-            hideTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                guard !Task.isCancelled else { return }
-                self?.onControlsVisibility(false)
-            }
+    private func handleDoubleTap(_ side: PlayerSide) {
+        switch side {
+        case .center:
+            vm.togglePlayPause()
+        case .backward:
+            seekBubble(side: .backward, delta: -10)
+        case .forward:
+            seekBubble(side: .forward, delta: 10)
         }
+    }
 
-        nonisolated func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            true
+    private func seekBubble(side: PlayerSide, delta: Int) {
+        vm.seek(by: Double(delta))
+        var total = delta
+        if let current = bubble, current.side == side {
+            total = current.total + delta
         }
+        bubble = SeekBubble(side: side, total: total, tick: (bubble?.tick ?? 0) + 1)
+        bubbleTask?.cancel()
+        bubbleTask = Task {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            if Task.isCancelled { return }
+            bubble = nil
+        }
+    }
 
-        func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            onPictureInPicture(true)
-        }
+    private func openPanel(_ kind: PlayerPanel) {
+        withAnimation(.easeInOut(duration: 0.25)) { panel = kind }
+    }
 
-        func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            onPictureInPicture(false)
-        }
+    private func closePanel() {
+        withAnimation(.easeInOut(duration: 0.25)) { panel = nil }
+        bump()
+    }
 
-        func playerViewController(
-            _ playerViewController: AVPlayerViewController,
-            restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
-        ) {
-            // The full-screen cover is still presented, so there is nothing to rebuild.
-            completionHandler(true)
+    private func lock() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            locked = true
+            controlsShown = true
         }
+        bump()
+    }
+
+    private func unlock() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            locked = false
+            controlsShown = true
+        }
+        bump()
     }
 }
 
