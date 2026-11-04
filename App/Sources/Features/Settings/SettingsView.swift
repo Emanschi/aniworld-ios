@@ -12,7 +12,9 @@ struct SettingsView: View {
                 PrioritySection()
                 PlaybackSection()
                 SyncSection()
+                NotificationsSection()
                 dataSection
+                UpdatesSettingsSection()
                 InfoSection()
             }
             .scrollContentBackground(.hidden)
@@ -187,6 +189,78 @@ private struct PlaybackSection: View {
             Text("Wiedergabe")
         } footer: {
             Text("Erkennt automatisch Intros und Outros und blendet einen passenden Sprung-Button ein. Die Zeitmarken stammen aus einer mitgelieferten Offline-Datenbank oder von dir („Eigene Intro-Zeiten“); ohne Zeitmarken wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
+        }
+    }
+}
+
+// MARK: Notifications
+
+private struct NotificationsSection: View {
+    @Environment(SettingsStore.self) private var settings
+    @Environment(EpisodeWatcher.self) private var watcher
+    @Environment(\.openURL) private var openURL
+
+    private var lastCheckText: String {
+        guard let date = watcher.lastCheckAt else { return "Noch nie" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "de_DE")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private var isDenied: Bool { watcher.authorizationStatus == .denied }
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            Toggle("Neue Folgen meiner Favoriten", isOn: Binding<Bool>(
+                get: { settings.notifyNewEpisodes },
+                set: { newValue in
+                    if newValue {
+                        settings.notifyNewEpisodes = true
+                        Task {
+                            let granted: Bool = await watcher.requestAuthorization()
+                            if granted { await watcher.checkNow() }
+                        }
+                    } else {
+                        settings.notifyNewEpisodes = false
+                    }
+                }
+            ))
+            .tint(Theme.accent)
+            Toggle("Neue App-Version", isOn: $settings.notifyAppUpdates)
+                .tint(Theme.accent)
+            if (settings.notifyNewEpisodes || settings.notifyAppUpdates) && isDenied {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Mitteilungen sind für AniWorld in den iOS-Einstellungen ausgeschaltet.")
+                        .font(.footnote)
+                        .foregroundStyle(Color.red)
+                    Button("iOS-Einstellungen öffnen") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    }
+                }
+            }
+            if settings.notifyNewEpisodes {
+                Button {
+                    Task { await watcher.checkNow() }
+                } label: {
+                    HStack {
+                        Text("Jetzt prüfen")
+                        if watcher.isChecking { Spacer(); ProgressView() }
+                    }
+                }
+                .disabled(watcher.isChecking)
+                HStack {
+                    Text("Zuletzt geprüft")
+                    Spacer()
+                    Text(lastCheckText).foregroundStyle(Theme.textSecondary)
+                }
+            }
+        } header: {
+            Text("Benachrichtigungen")
+        } footer: {
+            Text("Die App prüft deine Favoriten selbst, ohne Server: beim Öffnen und, soweit iOS es zulässt, gelegentlich im Hintergrund. Bei per Sideload installierten Apps ist die Hintergrundprüfung unzuverlässig; sicher funktioniert die Prüfung beim Öffnen der App. Beim ersten Mal wird nur der aktuelle Stand gemerkt.")
         }
     }
 }

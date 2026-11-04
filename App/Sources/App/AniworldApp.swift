@@ -3,7 +3,16 @@ import AniworldKit
 
 @main
 struct AniworldApp: App {
-    @State private var env = AppEnvironment.live()
+    @State private var env: AppEnvironment
+    @Environment(\.scenePhase) private var scenePhase
+
+    @MainActor
+    init() {
+        let env = AppEnvironment.live()
+        _env = State(initialValue: env)
+        // Muss vor dem Ende des App-Starts passieren (BGTaskScheduler.register).
+        env.watcher.configure()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -12,8 +21,19 @@ struct AniworldApp: App {
                 .environment(env.settings)
                 .environment(env.playback)
                 .environment(env.sync)
+                .environment(env.watcher)
                 .environment(\.aniworld, env.service)
                 .preferredColorScheme(.dark)
+                .onChange(of: scenePhase) { _, newPhase in
+                    switch newPhase {
+                    case .active:
+                        Task { await env.watcher.runIfDue() }
+                    case .background:
+                        env.watcher.scheduleBackgroundRefresh()
+                    default:
+                        break
+                    }
+                }
         }
     }
 }
@@ -26,6 +46,7 @@ struct AppEnvironment {
     let settings: SettingsStore
     let playback: PlaybackCoordinator
     let sync: LibrarySyncService
+    let watcher: EpisodeWatcher
 
     static func live() -> AppEnvironment {
         make(service: AniworldClient())
@@ -37,7 +58,8 @@ struct AppEnvironment {
         return AppEnvironment(
             service: service, library: library, settings: settings,
             playback: PlaybackCoordinator(service: service, library: library, settings: settings),
-            sync: LibrarySyncService(library: library)
+            sync: LibrarySyncService(library: library),
+            watcher: EpisodeWatcher(service: service, library: library, settings: settings)
         )
     }
 }

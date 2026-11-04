@@ -46,6 +46,9 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.aniworldios.app.refresh
         UIRequiresFullScreen: false
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
