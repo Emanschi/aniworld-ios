@@ -1,0 +1,109 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core-tests:
+    name: AniworldKit tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache SwiftPM / build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-linux-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-linux-
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test
+
+  ipa:
+    name: Unsigned IPA (iOS)
+    runs-on: macos-15
+    # macOS minutes are expensive (10x in private repos): no IPA build on pull requests.
+    if: github.event_name != 'pull_request'
+    # Release/IPA upload needs write access only for tag builds.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install tools
+        run: |
+          brew install xcodegen xcbeautify
+          xcodebuild -version
+          swift --version
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: build/SourcePackages
+          key: spm-ios-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-ios-
+
+      - name: Derive version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build IPA
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          BUILD_NR: ${{ github.run_number }}
+        run: |
+          set -o pipefail
+          bash scripts/build-ipa.sh
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AniWorld-ipa
+          path: build/AniWorld.ipa
+          if-no-files-found: error
+
+      # On tags: generate a filled AltStore source and publish both with the release.
+      # The stable source URL is  .../releases/latest/download/altstore-source.json
+      # (no commit back to main needed).
+      - name: Generate AltStore source
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python3 scripts/update-altstore-source.py \
+            --ipa build/AniWorld.ipa \
+            --version "${{ steps.ver.outputs.version }}" \
+            --tag "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --out build/altstore-source.json
+          cat build/altstore-source.json
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/AniWorld.ipa
+            build/altstore-source.json
+          generate_release_notes: true
