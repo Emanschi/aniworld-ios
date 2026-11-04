@@ -1,4 +1,5 @@
 import SwiftUI
+import AniworldKit
 
 /// Tab bar shell.
 struct RootView: View {
