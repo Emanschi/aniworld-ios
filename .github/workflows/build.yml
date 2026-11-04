@@ -1,10 +1,11 @@
 name: Build
 
+# Builds run only for main (and release tags). Other branches such as dev and
+# pull requests have no pipeline, to save Actions minutes.
 on:
   push:
     branches: [main]
     tags: ["v*"]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -35,8 +36,6 @@ jobs:
   ipa:
     name: Unsigned IPA (iOS)
     runs-on: macos-15
-    # macOS minutes are expensive (10x in private repos): no IPA build on pull requests.
-    if: github.event_name != 'pull_request'
     # Release/IPA upload needs write access only for tag builds.
     permissions:
       contents: write

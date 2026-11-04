@@ -47,7 +47,7 @@ funktionieren erst, wenn das Repository öffentlich ist. Im Release-Workflow wir
 ### Mit GitHub Actions (kein Mac nötig)
 
 Ein Push auf `main` (oder ein manueller Start über *Run workflow*) baut die IPA und lädt sie als
-Artefakt `AniWorld-ipa` hoch. Pull Requests führen nur die Linux-Tests aus, um macOS-Minuten zu sparen. Ein Tag wie `v0.1.0` (`git tag v0.1.0 && git push origin v0.1.0`) erzeugt zusätzlich ein
+Artefakt `AniWorld-ipa` hoch. Andere Branches (z. B. `dev`) und Pull Requests haben keine Pipeline, um Actions-Minuten zu sparen; gearbeitet wird auf `dev`, gebaut erst nach dem Merge in `main`. Ein Tag wie `v0.1.0` (`git tag v0.1.0 && git push origin v0.1.0`) erzeugt zusätzlich ein
 GitHub-Release mit `AniWorld.ipa` und einer passenden `altstore-source.json`.
 
 ### Lokal auf dem Mac
