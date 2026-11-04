@@ -15,6 +15,10 @@ let package = Package(
             name: "AniworldKit",
             dependencies: ["SwiftSoup"]
         ),
+        .executableTarget(
+            name: "aniworld-smoke",
+            dependencies: ["AniworldKit"]
+        ),
         .testTarget(
             name: "AniworldKitTests",
             dependencies: ["AniworldKit"],
