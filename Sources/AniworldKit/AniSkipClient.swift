@@ -20,7 +20,7 @@ public final class AniSkipClient: Sendable {
 
     private let cache = Cache()
 
-    public init(transport: HTTPFetching) {
+    init(transport: HTTPFetching) {
         self.transport = transport
     }
 
