@@ -24,12 +24,22 @@ def fetch_json(url: str, post_data: Optional[bytes] = None, headers: Optional[Di
     if headers:
         for k, v in headers.items():
             req.add_header(k, v)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status == 200:
-                return json.loads(resp.read().decode("utf-8"))
-    except Exception as e:
-        pass
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            if e.code == 429:
+                retry_after = int(e.headers.get("retry-after", 5)) + 1
+                print(f"  [429] Rate limited. Waiting {retry_after}s...")
+                time.sleep(retry_after)
+                continue
+            time.sleep(1)
+        except Exception:
+            time.sleep(1)
     return None
 
 def resolve_mal_id(title: str) -> Optional[int]:
@@ -84,6 +94,10 @@ def group_episodes(episodes_dict: Dict[int, Dict[str, Any]]) -> Dict[str, Any]:
         end_ep = start_ep
         val = episodes_dict[start_ep]
 
+        if not val:
+            i += 1
+            continue
+
         while i + 1 < len(sorted_eps) and sorted_eps[i + 1] == end_ep + 1 and episodes_dict[sorted_eps[i + 1]] == val:
             end_ep = sorted_eps[i + 1]
             i += 1
@@ -110,12 +124,16 @@ def build_series_seasons(slug: str, season_configs: List[Tuple[str, int, int]]) 
         ep_skips: Dict[int, Dict[str, Any]] = {}
         for ep in range(1, ep_count + 1):
             skips = fetch_episode_skips(mal_id, ep)
-            ep_skips[ep] = skips
-            time.sleep(0.08) # Courtesy rate limit
+            if skips:
+                ep_skips[ep] = skips
+            time.sleep(0.55) # Stay safely within 120 req/min rate limit
 
         grouped = group_episodes(ep_skips)
-        series_data[str(season_num)] = grouped
-        print(f"  [+] Season {season_num} grouped into {len(grouped)} intervals/ranges.")
+        if grouped:
+            series_data[str(season_num)] = grouped
+            print(f"  [+] Season {season_num} grouped into {len(grouped)} intervals/ranges.")
+        else:
+            print(f"  [-] Season {season_num} has no skip times found.")
 
     return series_data
 
