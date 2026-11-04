@@ -8,6 +8,8 @@ struct SeriesDetailView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(SettingsStore.self) private var settings
     @Environment(PlaybackCoordinator.self) private var playback
+    @Environment(DownloadManager.self) private var downloads
+    @State private var downloadPrompt: EpisodeRef?
     @State private var vm = SeriesDetailViewModel()
     @State private var descriptionExpanded = false
 
@@ -268,18 +270,50 @@ struct SeriesDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
         } else {
-            LazyVStack(spacing: 10) {
-                ForEach(episodes) { episode in
-                    EpisodeRow(
-                        episode: episode,
-                        progress: library.progress(for: episode)
-                    ) {
-                        play(episode, episodes: episodes, fromStart: false)
+            VStack(spacing: 10) {
+                HStack {
+                    Spacer()
+                    Button {
+                        downloads.download(series: displaySummary, episodes: episodes,
+                                           language: languageBinding.wrappedValue)
+                        Haptics.impact()
+                    } label: {
+                        Label(vm.selectedSeason == 0 ? "Alle Filme laden" : "Ganze Staffel laden",
+                              systemImage: "arrow.down.circle")
+                            .font(.subheadline.weight(.semibold))
                     }
-                    .contextMenu { episodeMenu(episode, in: episodes) }
+                    .tint(Theme.accent)
+                }
+                LazyVStack(spacing: 10) {
+                    ForEach(episodes) { episode in
+                        EpisodeRow(
+                            episode: episode,
+                            progress: library.progress(for: episode),
+                            downloadState: downloads.state(for: episode.id),
+                            onDownloadTap: { downloadTapped(episode) }
+                        ) {
+                            play(episode, episodes: episodes, fromStart: false)
+                        }
+                        .contextMenu { episodeMenu(episode, in: episodes) }
+                    }
                 }
             }
             .padding(.horizontal, Theme.screenPadding)
+            .confirmationDialog(
+                downloadPromptTitle,
+                isPresented: Binding<Bool>(
+                    get: { downloadPrompt != nil },
+                    set: { if !$0 { downloadPrompt = nil } }),
+                titleVisibility: .visible,
+                presenting: downloadPrompt
+            ) { episode in
+                if downloads.state(for: episode.id) == .downloaded {
+                    Button("Download löschen", role: .destructive) { downloads.delete(episode.id) }
+                } else {
+                    Button("Download abbrechen", role: .destructive) { downloads.cancel(episode.id) }
+                }
+                Button("Zurück", role: .cancel) {}
+            }
         }
     }
 
@@ -301,6 +335,25 @@ struct SeriesDetailView: View {
             play(episode, episodes: episodes, fromStart: true)
         } label: {
             Label("Von vorne abspielen", systemImage: "gobackward")
+        }
+    }
+
+    private var downloadPromptTitle: String {
+        guard let episode = downloadPrompt else { return "Download" }
+        return downloads.state(for: episode.id) == .downloaded
+            ? "Heruntergeladene Folge \(episode.code) löschen?"
+            : "Download von \(episode.code) abbrechen?"
+    }
+
+    private func downloadTapped(_ episode: EpisodeRef) {
+        switch downloads.state(for: episode.id) {
+        case .none:
+            downloads.download(series: displaySummary, episodes: [episode], language: languageBinding.wrappedValue)
+            Haptics.impact()
+        case .failed:
+            downloads.retry(episode.id)
+        case .queued, .downloading, .downloaded:
+            downloadPrompt = episode
         }
     }
 
@@ -344,6 +397,8 @@ struct SeriesDetailView: View {
 struct EpisodeRow: View {
     let episode: EpisodeRef
     let progress: EpisodeProgress?
+    var downloadState: DownloadState = .none
+    var onDownloadTap: () -> Void = {}
     let onPlay: () -> Void
 
     private var watched: Bool { progress?.watched ?? false }
@@ -356,29 +411,32 @@ struct EpisodeRow: View {
     }
 
     var body: some View {
-        Button(action: onPlay) {
-            HStack(spacing: 14) {
-                numberBadge
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(displayTitle)
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(watched ? Theme.textSecondary : .white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    if fraction > 0.01 {
-                        ProgressBar(value: fraction, height: 3)
+        HStack(spacing: 4) {
+            Button(action: onPlay) {
+                HStack(spacing: 14) {
+                    numberBadge
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(displayTitle)
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(watched ? Theme.textSecondary : .white)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        if fraction > 0.01 {
+                            ProgressBar(value: fraction, height: 3)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    trailingIcon
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                trailingIcon
+                .contentShape(Rectangle())
             }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface)
-            )
-            .contentShape(Rectangle())
+            .buttonStyle(PressableStyle())
+            DownloadButton(state: downloadState, action: onDownloadTap)
         }
-        .buttonStyle(PressableStyle())
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface)
+        )
     }
 
     private var numberBadge: some View {

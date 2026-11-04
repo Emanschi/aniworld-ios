@@ -69,6 +69,7 @@ final class PlayerViewModel {
     @ObservationIgnored private var library: LibraryStore?
     @ObservationIgnored private var settings: SettingsStore?
     @ObservationIgnored private weak var coordinator: PlaybackCoordinator?
+    @ObservationIgnored private var downloads: DownloadManager?
 
     @ObservationIgnored private var hosters: [HosterLink] = []
     @ObservationIgnored private var hostersEpisodeID: String?
@@ -119,13 +120,14 @@ final class PlayerViewModel {
     // MARK: Lifecycle
 
     func attach(service: AniworldService, library: LibraryStore, settings: SettingsStore,
-                coordinator: PlaybackCoordinator) {
+                coordinator: PlaybackCoordinator, downloads: DownloadManager? = nil) {
         guard !attached else { return }
         attached = true
         self.service = service
         self.library = library
         self.settings = settings
         self.coordinator = coordinator
+        self.downloads = downloads
 
         player.defaultRate = playbackRate
         pip.onActiveChange = { [weak self] active in self?.isPictureInPictureActive = active }
@@ -215,6 +217,14 @@ final class PlayerViewModel {
 
     private func runLoad(gen: Int, startAt: Double?, language: StreamLanguage?, excluding: Set<String>) async {
         guard let service, let library, let settings else { return }
+        // Downloaded episodes play from disk, no hoster resolution needed.
+        if let local = downloads?.localStream(for: episode) {
+            guard gen == generation else { return }
+            availableLanguages = []
+            availableHosters = []
+            attach(stream: local, language: local.language, start: startAt ?? savedStartPosition(), gen: gen)
+            return
+        }
         do {
             if hostersEpisodeID != episode.id || hosters.isEmpty {
                 hosters = []
