@@ -1,3 +1,4 @@
+import UIKit
 import Foundation
 import UserNotifications
 import AniworldKit
@@ -29,6 +30,11 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let summary = SeriesSummary(slug: slug, title: title, url: url)
             Task { @MainActor in
                 self.onOpenSeries?(summary)
+            }
+        } else if let urlString = urlString, let url = URL(string: urlString) {
+            // Update-Mitteilung: Release-Seite öffnen.
+            Task { @MainActor in
+                UIApplication.shared.open(url)
             }
         }
         completionHandler()
