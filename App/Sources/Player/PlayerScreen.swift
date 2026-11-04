@@ -298,6 +298,7 @@ private struct NativePlayerView: UIViewControllerRepresentable {
         vc.view.backgroundColor = .black
         context.coordinator.onControlsVisibility = onControlsVisibility
         context.coordinator.onPictureInPicture = onPictureInPicture
+        context.coordinator.installTapObserver(on: vc.view)
         return vc
     }
 
@@ -308,14 +309,38 @@ private struct NativePlayerView: UIViewControllerRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate, UIGestureRecognizerDelegate {
         var onControlsVisibility: (Bool) -> Void = { _ in }
         var onPictureInPicture: (Bool) -> Void = { _ in }
+        private var hideTask: Task<Void, Never>?
 
-        func playerViewController(_ playerViewController: AVPlayerViewController,
-                                  willTransitionToVisibilityOfTransportControls visible: Bool,
-                                  with coordinator: any AVPlayerViewControllerAnimationCoordinator) {
-            onControlsVisibility(visible)
+        /// iOS has no public callback for the native controls' visibility, so we watch taps
+        /// (without swallowing them) and mirror the controls' ~4 s auto-hide.
+        func installTapObserver(on view: UIView) {
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            view.addGestureRecognizer(tap)
+            showControls()
+        }
+
+        @objc private func handleTap() {
+            showControls()
+        }
+
+        private func showControls() {
+            onControlsVisibility(true)
+            hideTask?.cancel()
+            hideTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard !Task.isCancelled else { return }
+                self?.onControlsVisibility(false)
+            }
+        }
+
+        nonisolated func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
         }
 
         func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
