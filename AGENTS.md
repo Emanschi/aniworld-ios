@@ -20,6 +20,21 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
   haben bewusst keine Pipeline, um GitHub-Actions-Minuten zu sparen (privates Repo, macOS = 10x).
 - Keine neuen Workflows anlegen und keine CI-Läufe auf anderen Branches aktivieren.
 
+## Lizenzen & Pflichtangaben (immer!)
+
+- Jede neue Abhängigkeit (Swift Package, Framework), jeder übernommene oder portierte fremde Code,
+  jede Schriftart, jedes Bild/Icon oder sonstige Asset von Dritten braucht **im selben Commit**:
+  1. einen Eintrag in `LicenseCatalog.items` in `App/Sources/Features/Settings/LicensesView.swift`
+     (Name, Verwendung, Copyright, Lizenz, URL),
+  2. den vollständigen Lizenztext in `App/Resources/Licenses/<Name>.txt`, wenn die Lizenz die
+     Weitergabe des Textes verlangt (z. B. MIT, BSD, Apache-2.0 inkl. NOTICE, GPL),
+  3. eine Zeile in `THIRD_PARTY_NOTICES.md`.
+- Vorher prüfen, ob die Lizenz mit GPL-3.0 vereinbar ist. Bei Unklarheit oder unbekannter Lizenz:
+  nicht einbauen, sondern den User fragen.
+- Wird etwas entfernt oder die Version gewechselt, Einträge und Copyright-Jahre mit anpassen.
+- Die GPL-Hinweise der App (Copyright, Gewährleistungsausschluss, Link zum Quellcode) und der
+  Haftungsausschluss in der Lizenzen-Ansicht bleiben immer erhalten.
+
 ## Projekt
 
 - iOS-Port von [dxmoc/aniworld-cli](https://github.com/dxmoc/aniworld-cli), Lizenz GPL-3.0.

@@ -90,4 +90,4 @@ Urheberrecht. Die Nutzung erfolgt auf eigene Verantwortung.
 
 ## Lizenz
 
-[GPL-3.0](LICENSE), wie das Original [aniworld-cli](https://github.com/dxmoc/aniworld-cli).
+[GPL-3.0](LICENSE), wie das Original [aniworld-cli](https://github.com/dxmoc/aniworld-cli). Hinweise zu verwendeter Fremdsoftware: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
