@@ -34,6 +34,8 @@ final class PlayerViewModel {
     var hasNext = false
     /// True once an item was attached to the player (the native view is shown from then on).
     var hasItem = false
+    var skipTimes: [SkipTime] = []
+    var activeSkipSegment: SkipTime?
 
     // Custom-UI state
     var isBuffering = false
@@ -58,6 +60,8 @@ final class PlayerViewModel {
     @ObservationIgnored private var hostersEpisodeID: String?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
+    @ObservationIgnored private var skipTimesTask: Task<Void, Never>?
+    @ObservationIgnored private var autoSkippedIds: Set<String> = []
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
@@ -134,6 +138,7 @@ final class PlayerViewModel {
         generation += 1
         loadTask?.cancel()
         countdownTask?.cancel()
+        skipTimesTask?.cancel()
         removeItemObservers()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
@@ -165,7 +170,11 @@ final class PlayerViewModel {
         guard !isShutdown else { return }
         loadTask?.cancel()
         countdownTask?.cancel()
+        skipTimesTask?.cancel()
         countdown = nil
+        skipTimes = []
+        activeSkipSegment = nil
+        autoSkippedIds = []
         generation += 1
         let gen = generation
         player.pause()
@@ -203,6 +212,18 @@ final class PlayerViewModel {
                 hosters: hosters, language: chosen, preferences: prefs,
                 verify: settings.verifyStreams, excluding: excluding)
             guard gen == generation else { return }
+
+            skipTimesTask = Task { [weak self, series, episode] in
+                guard let self else { return }
+                let times = await service.skipTimes(
+                    seriesTitle: series.title,
+                    seriesSlug: series.slug,
+                    season: episode.season,
+                    episode: episode.number
+                )
+                guard gen == self.generation, !Task.isCancelled else { return }
+                self.skipTimes = times
+            }
 
             let start = startAt ?? savedStartPosition()
             attach(stream: stream, language: stream.language ?? chosen, start: start, gen: gen)
@@ -386,6 +407,24 @@ final class PlayerViewModel {
         if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d }
         if s.isFinite { updateBufferedPosition(at: s) }
         updateBuffering()
+
+        let currentPos = s.isFinite ? s : position
+        if settings?.enableSkipDetection == true && !skipTimes.isEmpty {
+            let active = skipTimes.first { seg in
+                currentPos >= seg.interval.startTime && currentPos < seg.interval.endTime
+            }
+            activeSkipSegment = active
+            if let active {
+                let shouldAuto = (active.skipType.isOpening && settings?.autoSkipIntro == true)
+                    || (active.skipType.isEnding && settings?.autoSkipEnding == true)
+                if shouldAuto && !autoSkippedIds.contains(active.skipId) {
+                    autoSkippedIds.insert(active.skipId)
+                    seek(to: active.interval.endTime)
+                }
+            }
+        } else {
+            activeSkipSegment = nil
+        }
         tickCount += 1
         if tickCount % 10 == 0 { saveProgress() }
         if tickCount % 2 == 0 { updateNowPlaying() }
@@ -493,6 +532,14 @@ final class PlayerViewModel {
     }
 
     // MARK: User actions
+
+    func skipActiveOrIntro() {
+        if let active = activeSkipSegment {
+            seek(to: active.interval.endTime)
+        } else {
+            skipIntro()
+        }
+    }
 
     func skipIntro() {
         seek(to: currentSeconds() + Double(introSkipSeconds))

@@ -32,6 +32,15 @@ public protocol AniworldService: Sendable {
 
     /// Rows for the home screen parsed from the site's start page. May be empty.
     func homeSections() async throws -> [HomeSection]
+
+    /// Liefert Intro-, Outro- und Recap-Zeitmarken für eine Episode (oder leer, falls keine vorliegen).
+    func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime]
+}
+
+public extension AniworldService {
+    func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
+        []
+    }
 }
 
 public extension AniworldService {

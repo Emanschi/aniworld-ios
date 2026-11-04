@@ -170,3 +170,70 @@ public enum AniworldError: Error, Equatable, Sendable {
     case noPlayableStream
     case cancelled
 }
+
+/// Type of segment returned by skip time services.
+public enum SkipType: String, Codable, Hashable, Sendable, CaseIterable {
+    case op = "op"
+    case ed = "ed"
+    case mixedOp = "mixed-op"
+    case mixedEd = "mixed-ed"
+    case recap = "recap"
+
+    public var displayName: String {
+        switch self {
+        case .op, .mixedOp: "Intro"
+        case .ed, .mixedEd: "Outro"
+        case .recap: "Rückblick"
+        }
+    }
+
+    public var buttonTitle: String {
+        switch self {
+        case .op, .mixedOp: "Intro überspringen"
+        case .ed, .mixedEd: "Outro überspringen"
+        case .recap: "Rückblick überspringen"
+        }
+    }
+
+    public var isOpening: Bool {
+        self == .op || self == .mixedOp
+    }
+
+    public var isEnding: Bool {
+        self == .ed || self == .mixedEd
+    }
+
+    public var isRecap: Bool {
+        self == .recap
+    }
+}
+
+/// A time interval in seconds for an intro, outro or recap.
+public struct SkipInterval: Hashable, Codable, Sendable {
+    public var startTime: Double
+    public var endTime: Double
+
+    public var duration: Double { max(0, endTime - startTime) }
+
+    public init(startTime: Double, endTime: Double) {
+        self.startTime = startTime
+        self.endTime = endTime
+    }
+}
+
+/// A skip segment for an episode.
+public struct SkipTime: Identifiable, Hashable, Codable, Sendable {
+    public var skipId: String
+    public var skipType: SkipType
+    public var interval: SkipInterval
+    public var episodeLength: Double
+
+    public var id: String { skipId }
+
+    public init(skipId: String, skipType: SkipType, interval: SkipInterval, episodeLength: Double = 0) {
+        self.skipId = skipId
+        self.skipType = skipType
+        self.interval = interval
+        self.episodeLength = episodeLength
+    }
+}
