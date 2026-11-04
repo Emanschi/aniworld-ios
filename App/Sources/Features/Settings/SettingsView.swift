@@ -131,6 +131,11 @@ private struct InfoSection: View {
                 Spacer()
                 Text(versionText).foregroundStyle(Theme.textSecondary)
             }
+            NavigationLink {
+                LicensesView()
+            } label: {
+                Label("Lizenzen & rechtliche Hinweise", systemImage: "doc.text")
+            }
             if let url = URL(string: "https://github.com/dxmoc/aniworld-cli") {
                 Link(destination: url) {
                     Label("Originalprojekt auf GitHub", systemImage: "link")
