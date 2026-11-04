@@ -97,9 +97,19 @@ private struct PlaybackSection: View {
                     Text("\(settings.autoplayCountdown) s").foregroundStyle(Theme.textSecondary)
                 }
             }
+            Toggle("Intro-Erkennung (automatisch)", isOn: $settings.enableSkipDetection)
+                .tint(Theme.accent)
+            if settings.enableSkipDetection {
+                Toggle("Intro automatisch überspringen", isOn: $settings.autoSkipIntro)
+                    .tint(Theme.accent)
+                    .padding(.leading, 12)
+                Toggle("Outro automatisch überspringen", isOn: $settings.autoSkipEnding)
+                    .tint(Theme.accent)
+                    .padding(.leading, 12)
+            }
             Stepper(value: $settings.introSkipSeconds, in: 30...150, step: 5) {
                 HStack {
-                    Text("Intro-Sprung")
+                    Text("Manueller Intro-Sprung")
                     Spacer()
                     Text("\(settings.introSkipSeconds) s").foregroundStyle(Theme.textSecondary)
                 }
@@ -109,7 +119,7 @@ private struct PlaybackSection: View {
         } header: {
             Text("Wiedergabe")
         } footer: {
-            Text("„Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind. Das ist zuverlässiger, dauert aber etwas länger.")
+            Text("Erkennt automatisch Intros und Outros und blendet einen passenden Sprung-Button ein. Wenn keine genauen Zeitmarken vorliegen, wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
         }
     }
 }

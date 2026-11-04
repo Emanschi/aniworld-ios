@@ -7,7 +7,14 @@ struct PlayerPills: View {
     let controlsShown: Bool
 
     private var showSkipIntro: Bool {
-        vm.position < 240 && vm.duration > Double(vm.introSkipSeconds) + 120
+        if vm.activeSkipSegment != nil {
+            return true
+        }
+        return vm.position < 240 && vm.duration > Double(vm.introSkipSeconds) + 120
+    }
+
+    private var skipButtonTitle: String {
+        vm.activeSkipSegment?.skipType.buttonTitle ?? "Intro überspringen"
     }
 
     private var showNext: Bool {
@@ -20,7 +27,7 @@ struct PlayerPills: View {
             HStack(spacing: 10) {
                 Spacer(minLength: 0)
                 if showSkipIntro {
-                    pill("Intro überspringen", systemImage: "forward.fill") { vm.skipIntro() }
+                    pill(skipButtonTitle, systemImage: "forward.fill") { vm.skipActiveOrIntro() }
                 }
                 if showNext {
                     pill("Nächste Folge", systemImage: "forward.end.fill") { vm.playNext() }

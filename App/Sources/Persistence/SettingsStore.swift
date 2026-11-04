@@ -28,6 +28,18 @@ final class SettingsStore {
     var introSkipSeconds: Int = 85 {
         didSet { defaults.set(introSkipSeconds, forKey: Keys.introSkipSeconds) }
     }
+    /// Automatic detection of intro/outro timestamps.
+    var enableSkipDetection: Bool = true {
+        didSet { defaults.set(enableSkipDetection, forKey: Keys.enableSkipDetection) }
+    }
+    /// Automatically skip opening when timestamps are detected.
+    var autoSkipIntro: Bool = false {
+        didSet { defaults.set(autoSkipIntro, forKey: Keys.autoSkipIntro) }
+    }
+    /// Automatically skip ending when timestamps are detected.
+    var autoSkipEnding: Bool = false {
+        didSet { defaults.set(autoSkipEnding, forKey: Keys.autoSkipEnding) }
+    }
     /// Check that a stream's segments load before playing (slower, more reliable).
     var verifyStreams: Bool = true {
         didSet { defaults.set(verifyStreams, forKey: Keys.verifyStreams) }
@@ -45,6 +57,9 @@ final class SettingsStore {
         static let autoplayNext = "settings.autoplayNext"
         static let autoplayCountdown = "settings.autoplayCountdown"
         static let introSkipSeconds = "settings.introSkipSeconds"
+        static let enableSkipDetection = "settings.enableSkipDetection"
+        static let autoSkipIntro = "settings.autoSkipIntro"
+        static let autoSkipEnding = "settings.autoSkipEnding"
         static let verifyStreams = "settings.verifyStreams"
     }
 
@@ -65,6 +80,15 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.introSkipSeconds) != nil {
             introSkipSeconds = max(defaults.integer(forKey: Keys.introSkipSeconds), 1)
+        }
+        if defaults.object(forKey: Keys.enableSkipDetection) != nil {
+            enableSkipDetection = defaults.bool(forKey: Keys.enableSkipDetection)
+        }
+        if defaults.object(forKey: Keys.autoSkipIntro) != nil {
+            autoSkipIntro = defaults.bool(forKey: Keys.autoSkipIntro)
+        }
+        if defaults.object(forKey: Keys.autoSkipEnding) != nil {
+            autoSkipEnding = defaults.bool(forKey: Keys.autoSkipEnding)
         }
         if defaults.object(forKey: Keys.verifyStreams) != nil {
             verifyStreams = defaults.bool(forKey: Keys.verifyStreams)

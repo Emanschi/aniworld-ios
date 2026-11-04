@@ -13,15 +13,17 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
 
     private let http: HTTPClient
     private let resolver: StreamResolver
+    private let skipClient: AniSkipClient
 
     public convenience init(baseURL: URL = AniworldClient.defaultBaseURL) {
         self.init(baseURL: baseURL, http: HTTPClient(), extractors: .default)
     }
 
-    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry) {
+    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry, skipClient: AniSkipClient? = nil) {
         self.baseURL = baseURL
         self.http = http
         self.resolver = StreamResolver(http: http, extractors: extractors)
+        self.skipClient = skipClient ?? AniSkipClient(transport: http)
     }
 
     private func url(_ path: String) -> URL { Support.absoluteURL(path, base: baseURL)! }
@@ -70,5 +72,17 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
 
     public func homeSections() async throws -> [HomeSection] {
         HomeParser.parse(try await http.getText(baseURL), baseURL: baseURL)
+    }
+
+    public func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
+        if let local = LocalSkipDatabase.shared.findSkipTimes(
+            seriesSlug: seriesSlug,
+            seriesTitle: seriesTitle,
+            season: season,
+            episode: episode
+        ) {
+            return local
+        }
+        return await skipClient.skipTimes(seriesTitle: seriesTitle, seriesSlug: seriesSlug, season: season, episode: episode)
     }
 }
