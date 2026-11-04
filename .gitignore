@@ -9,3 +9,4 @@ build/
 App/Info.plist
 .DS_Store
 Package.resolved.orig
+.claude/

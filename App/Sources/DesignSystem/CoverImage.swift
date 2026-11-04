@@ -21,7 +21,7 @@ actor ImageLoader {
         if let cached = ImageMemoryCache.shared.image(for: url) { return cached }
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
+        guard let data = try? await URLSession.shared.data(for: request).0,
               let image = UIImage(data: data) else { return nil }
         let prepared = await image.byPreparingForDisplay() ?? image
         ImageMemoryCache.shared.store(prepared, for: url)
