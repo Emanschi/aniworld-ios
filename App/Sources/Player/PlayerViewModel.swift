@@ -215,6 +215,24 @@ final class PlayerViewModel {
         }
     }
 
+    /// Looks up intro/outro times (bundled database, works offline) for the current episode.
+    private func loadSkipTimes(service: AniworldService, gen: Int) {
+        skipTimesTask = Task { [weak self, series, episode] in
+            guard let self else { return }
+            let times = await service.skipTimes(
+                seriesTitle: series.title,
+                seriesSlug: series.slug,
+                season: episode.season,
+                episode: episode.number
+            )
+            guard gen == self.generation, !Task.isCancelled else { return }
+            self.databaseSkipTimes = times
+            self.skipLookupDone = true
+            self.recomputeSkipTimes()
+            self.evaluateIntroPrompt()
+        }
+    }
+
     private func runLoad(gen: Int, startAt: Double?, language: StreamLanguage?, excluding: Set<String>) async {
         guard let service, let library, let settings else { return }
         // Downloaded episodes play from disk, no hoster resolution needed.
@@ -222,6 +240,7 @@ final class PlayerViewModel {
             guard gen == generation else { return }
             availableLanguages = []
             availableHosters = []
+            loadSkipTimes(service: service, gen: gen)
             attach(stream: local, language: local.language, start: startAt ?? savedStartPosition(), gen: gen)
             return
         }
@@ -251,20 +270,7 @@ final class PlayerViewModel {
                 verify: settings.verifyStreams, excluding: excluding)
             guard gen == generation else { return }
 
-            skipTimesTask = Task { [weak self, series, episode] in
-                guard let self else { return }
-                let times = await service.skipTimes(
-                    seriesTitle: series.title,
-                    seriesSlug: series.slug,
-                    season: episode.season,
-                    episode: episode.number
-                )
-                guard gen == self.generation, !Task.isCancelled else { return }
-                self.databaseSkipTimes = times
-                self.skipLookupDone = true
-                self.recomputeSkipTimes()
-                self.evaluateIntroPrompt()
-            }
+            loadSkipTimes(service: service, gen: gen)
 
             let start = startAt ?? savedStartPosition()
             attach(stream: stream, language: stream.language ?? chosen, start: start, gen: gen)
