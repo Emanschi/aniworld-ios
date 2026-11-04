@@ -1,0 +1,39 @@
+{
+  "name": "AniWorld iOS",
+  "identifier": "com.aniworldios.source",
+  "subtitle": "Inoffizieller Anime-Client für aniworld.to",
+  "description": "Quelle für AniWorld iOS, einen nativen SwiftUI-Client (Port von aniworld-cli).",
+  "iconURL": "https://raw.githubusercontent.com/Emanschi/aniworld-ios/main/App/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+  "website": "https://github.com/Emanschi/aniworld-ios",
+  "tintColor": "#8B5CF6",
+  "sourceURL": "https://github.com/Emanschi/aniworld-ios/releases/latest/download/altstore-source.json",
+  "apps": [
+    {
+      "name": "AniWorld",
+      "bundleIdentifier": "com.aniworldios.app",
+      "developerName": "AniWorld iOS Contributors",
+      "subtitle": "Anime streamen mit nativem Player",
+      "localizedDescription": "Nativer iOS-Client für aniworld.to: Suche, Serien, Staffeln und Filme, Sprachwahl (GerDub/GerSub/EngSub), Hoster VOE und Vidmoly mit Fallback, Bild-in-Bild, AirPlay, Intro überspringen, Autoplay der nächsten Folge, Weiterschauen und Favoriten. Alles wird lokal gespeichert.",
+      "iconURL": "https://raw.githubusercontent.com/Emanschi/aniworld-ios/main/App/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+      "tintColor": "#8B5CF6",
+      "category": "entertainment",
+      "screenshots": [],
+      "versions": [
+        {
+          "version": "0.1.0",
+          "buildVersion": "1",
+          "date": "2025-01-01",
+          "size": 0,
+          "downloadURL": "https://github.com/Emanschi/aniworld-ios/releases/latest/download/AniWorld.ipa",
+          "localizedDescription": "Erste Version.",
+          "minOSVersion": "17.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {}
+      }
+    }
+  ],
+  "news": []
+}
