@@ -13,6 +13,7 @@ Es wird OHNE JEDE GEWÄHRLEISTUNG bereitgestellt. Vollständiger Text: [LICENSE]
 | Komponente | Verwendung | Copyright | Lizenz | Lizenztext in der App |
 |---|---|---|---|---|
 | [aniworld-cli](https://github.com/dxmoc/aniworld-cli) | Vorlage für Suche, Seiten-Parser, VOE/Vidmoly-Extraktoren, Resolver; Test-Fixtures in `Tests/AniworldKitTests/Fixtures` | © dxmoc | GPL-3.0-or-later | `App/Resources/Licenses/GPL-3.0.txt` |
+| [AniSkip](https://github.com/aniskip) | Intro-/Outro-Zeitmarken: Offline-Datenbank `App/Resources/skip_database.json` (erstellt mit `scripts/build_skip_database.py`) und Abfrage von api.aniskip.com | Daten: AniSkip und Community; AniSkip-Code © 2021 Lexes Jan Mantiquilla (MIT, nicht enthalten) | Daten **ohne ausdrückliche Lizenz** – nur mit Quellenangabe verwendet, vor Veröffentlichung Erlaubnis bei AniSkip einholen | `App/Resources/Licenses/AniSkip.txt` |
 | [SwiftSoup](https://github.com/scinfu/SwiftSoup) 2.14.x | HTML-Parser (Swift Package) | © 2009–2025 Jonathan Hedley (jsoup), © 2016–2025 Nabil Chatbi | MIT | `App/Resources/Licenses/SwiftSoup-MIT.txt` |
 
 In der App sind diese Hinweise unter **Einstellungen → Info → Lizenzen & rechtliche Hinweise**
