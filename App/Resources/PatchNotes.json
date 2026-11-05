@@ -1,12 +1,8 @@
 [
   {
-    "version": "0.4.0",
+    "version": "0.4.1",
     "date": "2026-11-06",
     "notes": [
-      "Neu: Statistiken mit deinem Monatsrückblick – Sehzeit, Lieblingsserien und -genres, Sprachen, aktivste Tage und Uhrzeiten, längster Binge und mehr.",
-      "Zu Beginn eines neuen Monats zeigt dir die Startseite deinen Rückblick als Story zum Durchwischen.",
-      "Die Statistiken werden über den iCloud-Ordner-Sync auf alle Geräte übertragen und lassen sich in den Einstellungen zurücksetzen.",
-      "Neu: Täglicher Streak mit Flammen – jeder Tag, an dem du mindestens eine ganze Folge schaust, zählt.",
       "Genre-Filter und Genre-Listen laden deutlich schneller: Die ersten Serien erscheinen sofort, der Rest lädt sichtbar nach.",
       "Einmal geladene Genres stehen einen Tag lang auch nach einem Neustart der App sofort bereit.",
       "Schon woanders gesehen? Ganze Staffeln oder die komplette Serie lassen sich über das Menü „…“ auf der Serienseite als gesehen abhaken. „Weiterschauen“ springt dann zur nächsten Folge.",
@@ -20,6 +16,16 @@
       "AniSkip lässt sich pro Serie ausschalten (Menü „…“ auf der Serienseite), falls die Zeitmarken einmal nicht passen.",
       "Abgefragte Intro- und Outro-Zeiten werden auf dem Gerät gespeichert und funktionieren so auch offline.",
       "Kalender: Tage heißen jetzt „Heute“, „Morgen“ oder „Freitag, 06.11.“, und mit dem Stern zeigst du nur deine Favoriten und Serien aus „Weiterschauen“."
+    ]
+  },
+  {
+    "version": "0.4.0",
+    "date": "2026-11-06",
+    "notes": [
+      "Neu: Statistiken mit deinem Monatsrückblick – Sehzeit, Lieblingsserien und -genres, Sprachen, aktivste Tage und Uhrzeiten, längster Binge und mehr.",
+      "Zu Beginn eines neuen Monats zeigt dir die Startseite deinen Rückblick als Story zum Durchwischen.",
+      "Die Statistiken werden über den iCloud-Ordner-Sync auf alle Geräte übertragen und lassen sich in den Einstellungen zurücksetzen.",
+      "Neu: Täglicher Streak mit Flammen – jeder Tag, an dem du mindestens eine ganze Folge schaust, zählt."
     ]
   },
   {
