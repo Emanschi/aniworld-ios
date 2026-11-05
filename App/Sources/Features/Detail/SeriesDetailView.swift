@@ -42,7 +42,7 @@ struct SeriesDetailView: View {
         ) {
             Button("Alle Downloads löschen", role: .destructive) {
                 downloads.deleteAll(seriesSlug: displaySummary.slug)
-                Haptics.notification(.success)
+                Haptics.success()
             }
             Button("Abbrechen", role: .cancel) {}
         }
@@ -323,13 +323,15 @@ struct SeriesDetailView: View {
             }
             .padding(.horizontal, Theme.screenPadding)
             .confirmationDialog(
-                vm.selectedSeason == 0 ? "Alle heruntergeladenen Filme dieser Serie löschen?" : "Alle Downloads von Staffel \(vm.selectedSeason) löschen?",
+                (vm.selectedSeason ?? 1) == 0 ? "Alle heruntergeladenen Filme dieser Serie löschen?" : "Alle Downloads von Staffel \(vm.selectedSeason ?? 1) löschen?",
                 isPresented: $confirmDeleteSeason,
                 titleVisibility: .visible
             ) {
-                Button(vm.selectedSeason == 0 ? "Filme löschen" : "Staffel löschen", role: .destructive) {
-                    downloads.deleteSeason(seriesSlug: displaySummary.slug, season: vm.selectedSeason)
-                    Haptics.notification(.success)
+                Button((vm.selectedSeason ?? 1) == 0 ? "Filme löschen" : "Staffel löschen", role: .destructive) {
+                    if let season = vm.selectedSeason {
+                        downloads.deleteSeason(seriesSlug: displaySummary.slug, season: season)
+                        Haptics.success()
+                    }
                 }
                 Button("Abbrechen", role: .cancel) {}
             }

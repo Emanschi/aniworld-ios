@@ -237,7 +237,9 @@ final class DownloadManager {
         fileSession = URLSession(configuration: fileConfig, delegate: sessionDelegate, delegateQueue: OperationQueue.main)
 
         DownloadNetworkWatcher.shared.onPathChange = { [weak self] in
-            self?.networkChanged()
+            Task { @MainActor [weak self] in
+                self?.networkChanged()
+            }
         }
 
         Task { await self.restoreTasks() }
