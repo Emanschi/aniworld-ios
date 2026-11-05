@@ -191,7 +191,8 @@ final class DownloadSessionDelegate: NSObject, AVAssetDownloadDelegate, URLSessi
 
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         let identifier = session.configuration.identifier ?? ""
-        Task { @MainActor in
+        // Delegate queue is `.main`.
+        MainActor.assumeIsolated {
             let handler = DownloadBackgroundEvents.handlers.removeValue(forKey: identifier)
             handler?()
         }
@@ -207,7 +208,8 @@ final class BackgroundTaskBox: @unchecked Sendable {
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
-        Task { @MainActor in
+        // Called on the main thread; store synchronously so `urlSessionDidFinishEvents` can't run first.
+        MainActor.assumeIsolated {
             DownloadBackgroundEvents.handlers[identifier] = completionHandler
         }
     }

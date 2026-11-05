@@ -254,7 +254,7 @@ public final class LocalSkipDatabase: @unchecked Sendable {
 
     private func normalize(_ string: String) -> String {
         string.lowercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
+            .folding(options: .diacriticInsensitive, locale: nil)
             .replacingOccurrences(of: "[^a-z0-9]", with: "", options: .regularExpression)
     }
 

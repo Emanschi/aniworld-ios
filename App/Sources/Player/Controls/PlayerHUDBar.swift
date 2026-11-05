@@ -124,13 +124,6 @@ final class VolumeController {
     func scanSlider(in view: UIView) {
         if let slider = view.subviews.first(where: { $0 is UISlider }) as? UISlider {
             self.volumeSlider = slider
-            return
-        }
-        for subview in view.subviews {
-            if let slider = subview as? UISlider {
-                self.volumeSlider = slider
-                return
-            }
         }
     }
 

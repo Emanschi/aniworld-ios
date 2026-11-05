@@ -41,7 +41,7 @@ struct PlayerScreen: View {
             vm.start()
         }
         .onAppear {
-            originalBrightness = UIScreen.main.brightness
+            if originalBrightness == nil { originalBrightness = UIScreen.main.brightness }
             PlayerOrientation.enterPlayer()
         }
         .onDisappear {

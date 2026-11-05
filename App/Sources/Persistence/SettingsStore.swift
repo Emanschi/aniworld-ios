@@ -9,8 +9,9 @@ final class SettingsStore {
     var languagePriority: [StreamLanguage] = StreamPreferences.default.languagePriority {
         didSet {
             let normalized = Self.normalize(languagePriority)
-            if normalized != languagePriority { languagePriority = normalized; return }
-            defaults.set(languagePriority.map(\.rawValue), forKey: Keys.languagePriority)
+            // Assigning inside didSet does not re-run it, so persist the normalized list here.
+            if normalized != languagePriority { languagePriority = normalized }
+            defaults.set(normalized.map(\.rawValue), forKey: Keys.languagePriority)
         }
     }
     var hosterPriority: [String] = StreamPreferences.default.hosterPriority {
