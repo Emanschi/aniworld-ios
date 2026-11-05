@@ -32,9 +32,16 @@ enum CalendarParser {
                 let series = SeriesSummary(slug: slug, title: name.isEmpty ? slug : name, url: url, coverURL: cover)
                 entries.append(CalendarEntry(id: id, series: series, info: info(for: a)))
             }
-            if !entries.isEmpty { days.append(CalendarDay(title: title, entries: entries)) }
+            if !entries.isEmpty { days.append(CalendarDay(title: title, entries: entries, date: date(in: title))) }
         }
         return days
+    }
+
+    /// Start of the day named in a heading like "Donnerstag, 05.11.2026 (heute)".
+    static func date(in title: String, calendar: Calendar = .current) -> Date? {
+        guard let m = Support.match("(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})", in: title),
+              let d = Int(m[1]), let mo = Int(m[2]), let y = Int(m[3]) else { return nil }
+        return calendar.date(from: DateComponents(year: y, month: mo, day: d))
     }
 
     /// "S01E06 · 13:40" from the item's `small` texts (either part may be missing).

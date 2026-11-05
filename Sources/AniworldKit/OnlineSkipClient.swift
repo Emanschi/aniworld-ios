@@ -42,20 +42,78 @@ public enum SkipTimeAlignment {
 
 final class OnlineSkipClient: Sendable {
     private let transport: HTTPFetching
-    private let cache = Cache()
+    private let cache: Cache
 
-    init(transport: HTTPFetching) {
+    /// `cacheFile`: where looked-up IDs and times are kept between launches (nil = memory only).
+    /// Each device only stores what it fetched itself; nothing is bundled or shared.
+    init(transport: HTTPFetching, cacheFile: URL? = nil) {
         self.transport = transport
+        self.cache = Cache(file: cacheFile)
     }
 
+    /// Times are refreshed after 30 days (new community votes); "nothing found" after 3 days.
+    static let skipLifetime: TimeInterval = 30 * 24 * 3600
+    static let emptyLifetime: TimeInterval = 3 * 24 * 3600
+
     private actor Cache {
-        /// title key -> MAL id (0 = looked up, nothing found)
-        var malIds: [String: Int] = [:]
-        var skips: [String: [SkipTime]] = [:]
-        func malId(_ key: String) -> Int? { malIds[key] }
-        func setMalId(_ id: Int, _ key: String) { malIds[key] = id }
-        func skipTimes(_ key: String) -> [SkipTime]? { skips[key] }
-        func setSkipTimes(_ list: [SkipTime], _ key: String) { skips[key] = list }
+        struct Stored: Codable {
+            var malIds: [String: Int] = [:]          // title key -> MAL id (0 = nothing found)
+            var malDates: [String: Date] = [:]
+            var skips: [String: [SkipTime]] = [:]
+            var skipDates: [String: Date] = [:]
+        }
+
+        private let file: URL?
+        private var stored = Stored()
+        private var loaded = false
+
+        init(file: URL?) { self.file = file }
+
+        private func load() {
+            guard !loaded else { return }
+            loaded = true
+            guard let file, let data = try? Data(contentsOf: file),
+                  let decoded = try? JSONDecoder().decode(Stored.self, from: data) else { return }
+            stored = decoded
+        }
+
+        private func save() {
+            guard let file, let data = try? JSONEncoder().encode(stored) else { return }
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+        }
+
+        private func fresh(_ date: Date?, empty: Bool) -> Bool {
+            guard let date else { return false }
+            return Date().timeIntervalSince(date) < (empty ? OnlineSkipClient.emptyLifetime : OnlineSkipClient.skipLifetime)
+        }
+
+        func malId(_ key: String) -> Int? {
+            load()
+            guard let id = stored.malIds[key], fresh(stored.malDates[key], empty: id == 0) else { return nil }
+            return id
+        }
+
+        func setMalId(_ id: Int, _ key: String) {
+            load()
+            stored.malIds[key] = id
+            stored.malDates[key] = Date()
+            save()
+        }
+
+        func skipTimes(_ key: String) -> [SkipTime]? {
+            load()
+            guard let list = stored.skips[key], fresh(stored.skipDates[key], empty: list.isEmpty) else { return nil }
+            return list
+        }
+
+        func setSkipTimes(_ list: [SkipTime], _ key: String) {
+            load()
+            stored.skips[key] = list
+            stored.skipDates[key] = Date()
+            save()
+        }
     }
 
     func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {

@@ -21,6 +21,8 @@ final class LibraryStore {
     private(set) var customSkips: [String: CustomSkip] = [:]
     /// Series for which the "Kein Intro hinterlegt" prompt is switched off (local only).
     private(set) var mutedSkipPromptSlugs: Set<String> = []
+    /// Series for which the user turned the online AniSkip lookup off (wrong match etc.).
+    private(set) var onlineSkipDisabledSlugs: Set<String> = []
 
     // Sync bookkeeping (not shown in the UI).
     @ObservationIgnored private var languageTimes: [String: Date] = [:]
@@ -53,13 +55,14 @@ final class LibraryStore {
         var customSkips: [CustomSkip] = []
         var customSkipTombstones: [String: Date] = [:]
         var mutedSkipPromptSlugs: [String] = []
+        var onlineSkipDisabledSlugs: [String] = []
 
         init() {}
 
         enum CodingKeys: String, CodingKey {
             case favorites, history, progress, languages
             case languageTimes, favoriteTombstones, historyTombstones, historyClearedAt, resetAt
-            case customSkips, customSkipTombstones, mutedSkipPromptSlugs
+            case customSkips, customSkipTombstones, mutedSkipPromptSlugs, onlineSkipDisabledSlugs
         }
 
         init(from decoder: Decoder) throws {
@@ -76,6 +79,7 @@ final class LibraryStore {
             customSkips = try c.decodeIfPresent([CustomSkip].self, forKey: .customSkips) ?? []
             customSkipTombstones = try c.decodeIfPresent([String: Date].self, forKey: .customSkipTombstones) ?? [:]
             mutedSkipPromptSlugs = try c.decodeIfPresent([String].self, forKey: .mutedSkipPromptSlugs) ?? []
+            onlineSkipDisabledSlugs = try c.decodeIfPresent([String].self, forKey: .onlineSkipDisabledSlugs) ?? []
         }
     }
 
@@ -120,6 +124,7 @@ final class LibraryStore {
         customSkips = Dictionary(snap.customSkips.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
         customSkipTombstones = snap.customSkipTombstones
         mutedSkipPromptSlugs = Set(snap.mutedSkipPromptSlugs)
+        onlineSkipDisabledSlugs = Set(snap.onlineSkipDisabledSlugs)
     }
 
     /// Schedules a debounced disk write. `notify: false` is used for changes that came from sync.
@@ -151,6 +156,7 @@ final class LibraryStore {
         snap.customSkips = customSkips.values.sorted { $0.key < $1.key }
         snap.customSkipTombstones = customSkipTombstones
         snap.mutedSkipPromptSlugs = mutedSkipPromptSlugs.sorted()
+        snap.onlineSkipDisabledSlugs = onlineSkipDisabledSlugs.sorted()
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? data.write(to: fileURL, options: [.atomic])
     }
@@ -402,6 +408,17 @@ final class LibraryStore {
         scheduleSave(notify: false)
     }
 
+    /// True when the user turned the online AniSkip lookup off for this series.
+    func isOnlineSkipDisabled(seriesSlug: String) -> Bool {
+        onlineSkipDisabledSlugs.contains(seriesSlug)
+    }
+
+    func setOnlineSkipDisabled(_ disabled: Bool, seriesSlug: String) {
+        guard disabled != onlineSkipDisabledSlugs.contains(seriesSlug) else { return }
+        if disabled { onlineSkipDisabledSlugs.insert(seriesSlug) } else { onlineSkipDisabledSlugs.remove(seriesSlug) }
+        scheduleSave(notify: false)
+    }
+
     func resetMutedSkipPrompts() {
         guard !mutedSkipPromptSlugs.isEmpty else { return }
         mutedSkipPromptSlugs = []
@@ -427,6 +444,7 @@ final class LibraryStore {
         customSkips = [:]
         customSkipTombstones = [:]
         mutedSkipPromptSlugs = []
+        onlineSkipDisabledSlugs = []
         resetAt = Date()
         onChange?()
         flush()

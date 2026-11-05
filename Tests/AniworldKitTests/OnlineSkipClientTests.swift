@@ -78,6 +78,27 @@ final class OnlineSkipClientTests: XCTestCase {
         XCTAssertEqual(SkipTimeAlignment.align([t(.ed, 1500, 1590, 1620)], toDuration: 1450), [])
     }
 
+    /// Fetched once online, the times survive an app restart and work offline (downloads).
+    func testDiskCacheWorksOffline() async {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aniskip-\(UUID().uuidString)/cache.json")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let online = FakeHTTP([
+            aniList: FakeHTTP.ok(#"{"data":{"Media":{"idMal":20}}}"#),
+            aniSkip(20, 3): FakeHTTP.ok(skipJSON),
+        ])
+        let first = await OnlineSkipClient(transport: online, cacheFile: file)
+            .skipTimes(seriesTitle: "Naruto", seriesSlug: "naruto", season: 1, episode: 3)
+        XCTAssertEqual(first.count, 2)
+
+        let offline = FakeHTTP()
+        offline.failAll = true
+        let again = await OnlineSkipClient(transport: offline, cacheFile: file)
+            .skipTimes(seriesTitle: "Naruto", seriesSlug: "naruto", season: 1, episode: 3)
+        XCTAssertEqual(again, first)
+        XCTAssertTrue(offline.requested.isEmpty)
+    }
+
     func testFilmsAndOfflineYieldNothing() async {
         let http = FakeHTTP()
         let client = OnlineSkipClient(transport: http)

@@ -351,7 +351,14 @@ final class ReleaseCalendarViewModel {
 /// Upcoming releases grouped by day.
 struct ReleaseCalendarView: View {
     @Environment(\.aniworld) private var service
+    @Environment(LibraryStore.self) private var library
     @State private var vm = ReleaseCalendarViewModel()
+    /// Only series that are favorites or in "Weiterschauen".
+    @AppStorage("calendarOnlyMine") private var onlyMine = false
+
+    private func isMine(_ slug: String) -> Bool {
+        library.isFavorite(slug) || library.lastWatched(seriesSlug: slug) != nil
+    }
 
     var body: some View {
         ScrollView {
@@ -362,6 +369,16 @@ struct ReleaseCalendarView: View {
         .background(AppBackground())
         .navigationTitle("Kalender")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    onlyMine.toggle()
+                } label: {
+                    Image(systemName: onlyMine ? "star.circle.fill" : "star.circle")
+                }
+                .accessibilityLabel(onlyMine ? "Alle Serien zeigen" : "Nur meine Serien zeigen")
+            }
+        }
         .refreshable { await vm.load(service: service, force: true) }
         .task { await vm.load(service: service) }
     }
@@ -381,19 +398,27 @@ struct ReleaseCalendarView: View {
                 Task { await vm.load(service: service, force: true) }
             }
         case .loaded:
-            let days = vm.days.filter { !$0.entries.isEmpty }
+            let days = vm.days
+                .map { day -> CalendarDay in
+                    var copy = day
+                    if onlyMine { copy.entries = day.entries.filter { isMine($0.series.slug) } }
+                    return copy
+                }
+                .filter { !$0.entries.isEmpty }
             if days.isEmpty {
                 ContentUnavailableView(
-                    "Kein Kalender",
+                    onlyMine ? "Nichts von deinen Serien" : "Kein Kalender",
                     systemImage: "calendar",
-                    description: Text("Aktuell sind keine Veröffentlichungen eingetragen.")
+                    description: Text(onlyMine
+                        ? "In den nächsten Tagen erscheint nichts von deinen Favoriten oder Serien in „Weiterschauen“."
+                        : "Aktuell sind keine Veröffentlichungen eingetragen.")
                 )
                 .padding(.top, 40)
             } else {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     ForEach(days) { day in
                         VStack(alignment: .leading, spacing: 10) {
-                            SectionHeader(title: day.title)
+                            SectionHeader(title: day.displayTitle())
                             VStack(spacing: 8) {
                                 ForEach(day.entries) { entry in
                                     NavigationLink(destination: SeriesDetailView(series: entry.series)) {

@@ -133,13 +133,35 @@ public struct CalendarEntry: Identifiable, Hashable, Sendable {
 
 /// One day of the anime calendar.
 public struct CalendarDay: Identifiable, Hashable, Sendable {
+    /// Raw heading of the site, e.g. "Donnerstag, 05.11.2026 (heute)".
     public var title: String
     public var entries: [CalendarEntry]
+    /// Day parsed from `title` (start of day in the current calendar), nil if unreadable.
+    public var date: Date?
     public var id: String { title }
 
-    public init(title: String, entries: [CalendarEntry]) {
+    public init(title: String, entries: [CalendarEntry], date: Date? = nil) {
         self.title = title
         self.entries = entries
+        self.date = date
+    }
+
+    private static let weekdays = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"]
+
+    /// "Heute", "Morgen", "Gestern" or "Freitag, 06.11."; falls back to the raw title.
+    public func displayTitle(now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard let date else { return title }
+        let today = calendar.startOfDay(for: now)
+        let days = calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: date)).day ?? 0
+        switch days {
+        case 0: return "Heute"
+        case 1: return "Morgen"
+        case -1: return "Gestern"
+        default:
+            let c = calendar.dateComponents([.weekday, .day, .month], from: date)
+            let name = Self.weekdays[((c.weekday ?? 1) - 1 + 7) % 7]
+            return name + ", " + String(format: "%02d.%02d.", c.day ?? 0, c.month ?? 0)
+        }
     }
 }
 
