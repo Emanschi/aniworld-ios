@@ -224,12 +224,22 @@ final class PlayerViewModel {
     private func loadSkipTimes(service: AniworldService, gen: Int) {
         skipTimesTask = Task { [weak self, series, episode] in
             guard let self else { return }
-            let times = await service.skipTimes(
+            var times = await service.skipTimes(
                 seriesTitle: series.title,
                 seriesSlug: series.slug,
                 season: episode.season,
                 episode: episode.number
             )
+            // AniSkip only when nothing is bundled and the user allows online lookups.
+            // Own times still win in `recomputeSkipTimes()`.
+            if times.isEmpty, self.settings?.enableSkipDetection == true, self.settings?.onlineSkipTimes == true {
+                times = await service.onlineSkipTimes(
+                    seriesTitle: series.title,
+                    seriesSlug: series.slug,
+                    season: episode.season,
+                    episode: episode.number
+                )
+            }
             guard gen == self.generation, !Task.isCancelled else { return }
             self.databaseSkipTimes = times
             self.skipLookupDone = true

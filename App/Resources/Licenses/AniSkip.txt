@@ -3,20 +3,21 @@ https://aniskip.com · https://github.com/aniskip
 
 Herkunft der Daten
 Die Zeitmarken für "Intro überspringen", "Outro überspringen" und Rückblicke
-stammen von AniSkip. Sie werden von der AniSkip-Community eingereicht und
-bewertet. Diese App enthält eine daraus erstellte Offline-Datenbank
-(skip_database.json). Es findet keine Online-Abfrage statt; fehlende
-Zeitmarken kann man selbst festlegen.
+können online von der öffentlichen AniSkip-API (api.aniskip.com) abgerufen
+werden. Sie werden von der AniSkip-Community eingereicht und bewertet. Die App
+enthält keine Kopie dieser Daten, sie werden nur bei Bedarf abgefragt und
+während der Sitzung zwischengespeichert. Die Abfrage lässt sich in den
+Einstellungen ausschalten; eigene Zeitmarken haben immer Vorrang.
+
+Um die passende Serie zu finden, wird der Serientitel an die öffentliche
+AniList-API (graphql.anilist.co) gesendet, die die MyAnimeList-ID liefert.
 
 Lizenzstatus
-Für die Zeitmarken-Daten bzw. den öffentlichen Datensatz
-(github.com/aniskip/sanitize-db-dump) ist keine ausdrückliche Lizenz
-angegeben. Alle Rechte an den Daten verbleiben bei AniSkip und den
-jeweiligen Beitragenden. Die Daten werden hier mit Quellenangabe
-verwendet; auf Wunsch der Rechteinhaber werden sie entfernt.
+Für die Zeitmarken-Daten ist keine ausdrückliche Lizenz angegeben. Alle
+Rechte an den Daten verbleiben bei AniSkip und den jeweiligen Beitragenden.
 
 Der Programmcode von AniSkip (aniskip-api, aniskip-extension) steht unter
 der MIT-Lizenz, Copyright (c) 2021 Lexes Jan Mantiquilla. Diese App
 enthält keinen Code von AniSkip.
 
-Diese App steht in keiner Verbindung zu AniSkip.
+Diese App steht in keiner Verbindung zu AniSkip oder AniList.

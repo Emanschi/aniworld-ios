@@ -18,10 +18,18 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
         self.init(baseURL: baseURL, http: HTTPClient(), extractors: .default)
     }
 
-    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry) {
+    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry,
+         skipTransport: HTTPFetching = URLSessionTransport()) {
         self.baseURL = baseURL
         self.http = http
         self.resolver = StreamResolver(http: http, extractors: extractors)
+        self.onlineSkip = OnlineSkipClient(transport: skipTransport)
+    }
+
+    private let onlineSkip: OnlineSkipClient
+
+    public func onlineSkipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
+        await onlineSkip.skipTimes(seriesTitle: seriesTitle, seriesSlug: seriesSlug, season: season, episode: episode)
     }
 
     private func url(_ path: String) -> URL { Support.absoluteURL(path, base: baseURL)! }

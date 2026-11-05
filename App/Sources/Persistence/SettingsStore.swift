@@ -32,6 +32,10 @@ final class SettingsStore {
     var enableSkipDetection: Bool = true {
         didSet { defaults.set(enableSkipDetection, forKey: Keys.enableSkipDetection) }
     }
+    /// Fetch intro/outro times online from AniSkip when no own times exist.
+    var onlineSkipTimes: Bool = true {
+        didSet { defaults.set(onlineSkipTimes, forKey: Keys.onlineSkipTimes) }
+    }
     /// Automatically skip opening when timestamps are detected.
     var autoSkipIntro: Bool = false {
         didSet { defaults.set(autoSkipIntro, forKey: Keys.autoSkipIntro) }
@@ -90,6 +94,7 @@ final class SettingsStore {
         static let introSkipSeconds = "settings.introSkipSeconds"
         static let enableSkipDetection = "settings.enableSkipDetection"
         static let autoSkipIntro = "settings.autoSkipIntro"
+        static let onlineSkipTimes = "settings.onlineSkipTimes"
         static let autoSkipEnding = "settings.autoSkipEnding"
         static let autoNextOnOutro = "settings.autoNextOnOutro"
         static let verifyStreams = "settings.verifyStreams"
@@ -121,6 +126,9 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.enableSkipDetection) != nil {
             enableSkipDetection = defaults.bool(forKey: Keys.enableSkipDetection)
+        }
+        if defaults.object(forKey: Keys.onlineSkipTimes) != nil {
+            onlineSkipTimes = defaults.bool(forKey: Keys.onlineSkipTimes)
         }
         if defaults.object(forKey: Keys.autoSkipIntro) != nil {
             autoSkipIntro = defaults.bool(forKey: Keys.autoSkipIntro)

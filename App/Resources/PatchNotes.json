@@ -16,7 +16,8 @@
       "Das Wischen für die Lautstärke ändert nur noch die Systemlautstärke und reagiert nur auf senkrechtes Wischen.",
       "Die Bildschirmhelligkeit wird zurückgesetzt, wenn die App in den Hintergrund oder in Bild-in-Bild wechselt.",
       "Das Löschen von Staffel-Downloads in den Serien-Details funktioniert zuverlässiger.",
-      "Korrektur: Eine mitgelieferte Intro-Datenbank ist entgegen der letzten Patchnotes noch nicht enthalten. Eigene Intro- und Outro-Zeiten funktionieren wie gewohnt."
+      "Intro- und Outro-Zeitmarken kommen jetzt online von AniSkip (in den Einstellungen abschaltbar). Deine eigenen Zeiten haben immer Vorrang.",
+      "Korrektur: Die in den letzten Patchnotes angekündigte Offline-Datenbank war nie enthalten und wurde durch die AniSkip-Abfrage ersetzt."
     ]
   },
   {
