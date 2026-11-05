@@ -4,7 +4,8 @@
     "date": "2026-11-05",
     "notes": [
       "Genre-Filter und Genre-Listen laden deutlich schneller: Die ersten Serien erscheinen sofort, der Rest lädt sichtbar nach.",
-      "Einmal geladene Genres stehen einen Tag lang auch nach einem Neustart der App sofort bereit."
+      "Einmal geladene Genres stehen einen Tag lang auch nach einem Neustart der App sofort bereit.",
+      "Intro- und Outro-Sprünge von AniSkip passen jetzt zur Länge der gerade laufenden Folge. Zeitmarken einer anders langen Fassung werden nicht mehr verwendet (z. B. Attack on Titan sprang zu früh)."
     ]
   },
   {

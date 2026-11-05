@@ -8,6 +8,38 @@ import FoundationNetworking
 /// AniSkip is keyed by MyAnimeList IDs, which aniworld.to does not expose, so the series title is
 /// first mapped to a MAL ID via AniList's public GraphQL API. Nothing is bundled; every failure
 /// (offline, no match, rate limit) simply yields no times.
+/// AniSkip mixes submissions made on differently long versions of an episode (an extra logo, a
+/// recap or a preview shifts everything), and its `episodeLength` parameter does not filter.
+/// This fits the times to the length of the stream that is actually playing.
+public enum SkipTimeAlignment {
+    /// Same version: times are used as they are.
+    public static let exactTolerance: Double = 3
+    /// Outros are anchored to the end, so they can be shifted for a moderately different version.
+    public static let endShiftLimit: Double = 30
+
+    /// `duration` is the real length of the playing stream (seconds). Times without a known
+    /// `episodeLength` (e.g. user-defined) are kept unchanged.
+    public static func align(_ times: [SkipTime], toDuration duration: Double) -> [SkipTime] {
+        guard duration > 0 else { return times }
+        return times.compactMap { time -> SkipTime? in
+            guard time.episodeLength > 0 else { return time }
+            let diff = duration - time.episodeLength
+            var out = time
+            if abs(diff) > exactTolerance {
+                // Only an outro survives a different version: shift it with the end of the episode.
+                guard time.skipType.isEnding, abs(diff) <= endShiftLimit else { return nil }
+                out.interval = SkipInterval(startTime: time.interval.startTime + diff,
+                                            endTime: time.interval.endTime + diff)
+                out.episodeLength = duration
+            }
+            let end = min(out.interval.endTime, duration)
+            guard out.interval.startTime >= 0, end - out.interval.startTime >= 1 else { return nil }
+            out.interval = SkipInterval(startTime: out.interval.startTime, endTime: end)
+            return out
+        }
+    }
+}
+
 final class OnlineSkipClient: Sendable {
     private let transport: HTTPFetching
     private let cache = Cache()

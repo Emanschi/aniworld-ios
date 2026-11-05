@@ -386,7 +386,7 @@ final class PlayerViewModel {
                     _ = await self.player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
                 }
                 guard gen == self.generation, !self.isShutdown else { return }
-                if let d = self.player.currentItem?.duration.seconds, d.isFinite, d > 0 { self.duration = d }
+                if let d = self.player.currentItem?.duration.seconds, d.isFinite, d > 0 { self.duration = d; self.recomputeSkipTimes() }
                 self.state = .playing
                 self.readyForSaving = true
                 self.evaluateIntroPrompt()
@@ -467,7 +467,7 @@ final class PlayerViewModel {
         guard readyForSaving, !isShutdown else { return }
         let s = time.seconds
         if s.isFinite, !isScrubbing { position = s }
-        if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d }
+        if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d; recomputeSkipTimes() }
         if s.isFinite { updateBufferedPosition(at: s) }
         updateBuffering()
 
@@ -638,10 +638,11 @@ final class PlayerViewModel {
 
     /// Merges custom and database times: custom intro/outro replace the database ones of the same kind.
     private func recomputeSkipTimes() {
-        guard let library else { skipTimes = databaseSkipTimes; return }
+        guard let library else { skipTimes = SkipTimeAlignment.align(databaseSkipTimes, toDuration: duration); return }
         let custom = library.customSkip(seriesSlug: series.slug, season: episode.season, episode: episode.number)
         customSkip = custom
-        var result = databaseSkipTimes
+        // AniSkip times may come from a differently long version of the episode.
+        var result = SkipTimeAlignment.align(databaseSkipTimes, toDuration: duration)
         if let custom {
             if custom.hasIntro {
                 result.removeAll { $0.skipType.isOpening }
