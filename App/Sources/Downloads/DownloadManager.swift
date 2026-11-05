@@ -292,6 +292,26 @@ final class DownloadManager {
         for id in ids { delete(id) }
     }
 
+    /// Deletes all downloads of a specific season.
+    func deleteSeason(seriesSlug: String, season: Int) {
+        let ids = records.filter { $0.series.slug == seriesSlug && $0.episode.season == season }.map { $0.id }
+        for id in ids { delete(id) }
+    }
+
+    /// Deletes all downloaded episodes across all series.
+    func deleteAll() {
+        for record in records { delete(record.id) }
+    }
+
+    func hasDownloads(seriesSlug: String) -> Bool {
+        records.contains { $0.series.slug == seriesSlug }
+    }
+
+    func hasDownloads(in episodes: [EpisodeRef]) -> Bool {
+        let ids = Set(episodes.map(\.id))
+        return records.contains { ids.contains($0.id) }
+    }
+
     // MARK: Queue
 
     private func pump() {
@@ -406,7 +426,7 @@ final class DownloadManager {
         let record = DownloadRecord(
             id: id, series: job.series, episode: job.episode, language: job.language,
             hoster: job.currentHoster ?? "", relativePath: DownloadPaths.relativePath(for: location),
-            kind: kind, sizeBytes: 0, createdAt: Date())
+            kind: kind, sizeBytes: 0, createdAt: Date(), isCompressed: false)
         records.removeAll { $0.id == id }
         records.append(record)
         jobs[id] = nil
@@ -414,9 +434,77 @@ final class DownloadManager {
         pump()
 
         Task { [weak self] in
-            let size = await Task.detached(priority: .utility) { DownloadPaths.diskSize(of: location) }.value
-            self?.setSize(size, id: id)
+            guard let self else { return }
+            var finalLocation = location
+            var wasCompressed = false
+
+            // Compress MP4 files using hardware encoder if compression is enabled
+            if kind == .file && self.settings.compressDownloads {
+                if let compressed = await self.compressVideoFile(at: location) {
+                    finalLocation = compressed
+                    wasCompressed = true
+                }
+            }
+
+            let size = await Task.detached(priority: .utility) { DownloadPaths.diskSize(of: finalLocation) }.value
+            self.finalizeRecord(id: id, location: finalLocation, size: size, isCompressed: wasCompressed)
         }
+    }
+
+    private func finalizeRecord(id: String, location: URL, size: Int64, isCompressed: Bool) {
+        guard let index = records.firstIndex(where: { $0.id == id }) else { return }
+        records[index].sizeBytes = size
+        records[index].relativePath = DownloadPaths.relativePath(for: location)
+        records[index].isCompressed = isCompressed
+        saveIndex()
+    }
+
+    /// Compresses a video file to a high-efficiency format (HEVC / 720p) to reduce disk space by 50-75%.
+    private func compressVideoFile(at source: URL) async -> URL? {
+        let destination = source.deletingPathExtension().appendingPathExtension("compressed.mp4")
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try? FileManager.default.removeItem(at: destination)
+        }
+        let asset = AVURLAsset(url: source)
+        let preferredPreset: String
+        let fallbackPreset: String
+        switch settings.downloadQuality {
+        case .low:
+            preferredPreset = AVAssetExportPreset640x480
+            fallbackPreset = AVAssetExportPreset640x480
+        case .medium:
+            preferredPreset = AVAssetExportPresetHEVC1280x720
+            fallbackPreset = AVAssetExportPreset1280x720
+        case .high:
+            preferredPreset = AVAssetExportPresetHEVC1920x1080
+            fallbackPreset = AVAssetExportPreset1920x1080
+        }
+        let supportedPresets = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        let preset: String
+        if supportedPresets.contains(preferredPreset) {
+            preset = preferredPreset
+        } else if supportedPresets.contains(fallbackPreset) {
+            preset = fallbackPreset
+        } else if supportedPresets.contains(AVAssetExportPresetMediumQuality) {
+            preset = AVAssetExportPresetMediumQuality
+        } else {
+            return nil
+        }
+
+        guard let session = AVAssetExportSession(asset: asset, presetName: preset) else { return nil }
+        session.outputURL = destination
+        session.outputFileType = .mp4
+        session.shouldOptimizeForNetworkUse = true
+        await session.export()
+        if session.status == .completed && FileManager.default.fileExists(atPath: destination.path) {
+            let fm = FileManager.default
+            try? fm.removeItem(at: source)
+            try? fm.moveItem(at: destination, to: source)
+            DownloadPaths.excludeFromBackup(source)
+            return source
+        }
+        try? FileManager.default.removeItem(at: destination)
+        return nil
     }
 
     private func setSize(_ size: Int64, id: String) {

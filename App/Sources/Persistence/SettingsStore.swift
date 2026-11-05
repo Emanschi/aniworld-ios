@@ -56,6 +56,14 @@ final class SettingsStore {
     var notifyAppUpdates: Bool = true {
         didSet { defaults.set(notifyAppUpdates, forKey: Keys.notifyAppUpdates) }
     }
+    /// Automatische Komprimierung heruntergeladener Folgen (HEVC / Hardware-Transcoding).
+    var compressDownloads: Bool = true {
+        didSet { defaults.set(compressDownloads, forKey: Keys.compressDownloads) }
+    }
+    /// Zielauflösung / Kompressionsstufe für Downloads.
+    var downloadQuality: DownloadQuality = .medium {
+        didSet { defaults.set(downloadQuality.rawValue, forKey: Keys.downloadQuality) }
+    }
 
     var streamPreferences: StreamPreferences {
         StreamPreferences(languagePriority: languagePriority, hosterPriority: hosterPriority)
@@ -76,6 +84,8 @@ final class SettingsStore {
         static let verifyStreams = "settings.verifyStreams"
         static let notifyNewEpisodes = "settings.notifyNewEpisodes"
         static let notifyAppUpdates = "settings.notifyAppUpdates"
+        static let compressDownloads = "settings.compressDownloads"
+        static let downloadQuality = "settings.downloadQuality"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -116,6 +126,13 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.notifyAppUpdates) != nil {
             notifyAppUpdates = defaults.bool(forKey: Keys.notifyAppUpdates)
+        }
+        if defaults.object(forKey: Keys.compressDownloads) != nil {
+            compressDownloads = defaults.bool(forKey: Keys.compressDownloads)
+        }
+        if let rawQuality = defaults.string(forKey: Keys.downloadQuality),
+           let quality = DownloadQuality(rawValue: rawQuality) {
+            downloadQuality = quality
         }
     }
 

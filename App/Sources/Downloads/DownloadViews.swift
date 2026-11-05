@@ -68,6 +68,7 @@ struct DownloadsView: View {
     @Environment(DownloadManager.self) private var downloads
     @Environment(PlaybackCoordinator.self) private var playback
     @State private var confirmDeleteAll = false
+    @State private var seriesToDelete: SeriesGroup?
 
     private struct SeriesGroup: Identifiable {
         var series: SeriesSummary
@@ -122,7 +123,21 @@ struct DownloadsView: View {
         }
         .confirmationDialog("Alle Downloads löschen?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
             Button("Alle löschen", role: .destructive) {
-                for record in downloads.records { downloads.delete(record.id) }
+                downloads.deleteAll()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Downloads von „\(seriesToDelete?.series.title ?? "Serie")“ löschen?",
+            isPresented: Binding<Bool>(
+                get: { seriesToDelete != nil },
+                set: { if !$0 { seriesToDelete = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: seriesToDelete
+        ) { group in
+            Button("Alle Downloads dieser Serie löschen", role: .destructive) {
+                downloads.deleteAll(seriesSlug: group.series.slug)
             }
             Button("Abbrechen", role: .cancel) {}
         }
@@ -154,7 +169,7 @@ struct DownloadsView: View {
             }
 
             ForEach(groups) { group in
-                Section(group.series.title) {
+                Section {
                     ForEach(group.records) { record in
                         Button {
                             play(record, in: group.records)
@@ -163,10 +178,30 @@ struct DownloadsView: View {
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(Theme.surface)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                downloads.delete(record.id)
+                            } label: {
+                                Label("Download löschen", systemImage: "trash")
+                            }
+                        }
                     }
                     .onDelete { offsets in
                         let ids = offsets.map { group.records[$0].id }
                         for id in ids { downloads.delete(id) }
+                    }
+                } header: {
+                    HStack {
+                        Text(group.series.title)
+                        Spacer()
+                        Button(role: .destructive) {
+                            seriesToDelete = group
+                        } label: {
+                            Label("Serie entfernen", systemImage: "trash")
+                                .font(.caption)
+                                .foregroundStyle(Color.red)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -241,6 +276,7 @@ struct DownloadsView: View {
         var parts: [String] = []
         if let language = record.language { parts.append(language.shortName) }
         if record.sizeBytes > 0 { parts.append(DownloadFormat.bytes(record.sizeBytes)) }
+        if record.isCompressed == true { parts.append("HEVC") }
         return parts.joined(separator: " · ")
     }
 

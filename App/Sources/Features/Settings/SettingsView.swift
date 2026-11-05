@@ -11,6 +11,7 @@ struct SettingsView: View {
             Form {
                 PrioritySection()
                 PlaybackSection()
+                DownloadsSettingsSection()
                 SyncSection()
                 NotificationsSection()
                 dataSection
@@ -301,6 +302,53 @@ private struct InfoSection: View {
             Text("Info")
         } footer: {
             Text("Diese App ist eine iOS-Portierung von aniworld-cli (dxmoc) und steht wie das Original unter der GPL-3.0. Sie hostet keine Inhalte, sondern verlinkt ausschließlich auf Streams von aniworld.to. Für die Inhalte sind allein die jeweiligen Anbieter verantwortlich.")
+        }
+    }
+}
+
+// MARK: Downloads
+
+private struct DownloadsSettingsSection: View {
+    @Environment(SettingsStore.self) private var settings
+    @Environment(DownloadManager.self) private var downloads
+    @State private var confirmDeleteAll = false
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            Toggle("Downloads komprimieren (HEVC)", isOn: $settings.compressDownloads)
+                .tint(Theme.accent)
+
+            if settings.compressDownloads {
+                Picker("Qualität & Komprimierung", selection: $settings.downloadQuality) {
+                    ForEach(DownloadQuality.allCases) { quality in
+                        Text(quality.title).tag(quality)
+                    }
+                }
+            }
+
+            HStack {
+                Text("Belegter Speicher")
+                Spacer()
+                Text(DownloadFormat.bytes(downloads.totalBytes))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            if !downloads.records.isEmpty {
+                Button("Alle Downloads löschen", role: .destructive) {
+                    confirmDeleteAll = true
+                }
+            }
+        } header: {
+            Text("Downloads & Speicher")
+        } footer: {
+            Text("Komprimiert heruntergeladene Videos mit hardwarebeschleunigtem H.265/HEVC direkt auf dem Gerät. Spart 50–75% Speicherplatz bei gleichbleibend flüssiger Wiedergabe.")
+        }
+        .confirmationDialog("Alle Downloads löschen?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
+            Button("Alle Downloads löschen", role: .destructive) {
+                downloads.deleteAll()
+            }
+            Button("Abbrechen", role: .cancel) {}
         }
     }
 }

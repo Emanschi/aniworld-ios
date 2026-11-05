@@ -10,6 +10,8 @@ struct SeriesDetailView: View {
     @Environment(PlaybackCoordinator.self) private var playback
     @Environment(DownloadManager.self) private var downloads
     @State private var downloadPrompt: EpisodeRef?
+    @State private var confirmDeleteSeason = false
+    @State private var confirmDeleteSeries = false
     @State private var vm = SeriesDetailViewModel()
     @State private var descriptionExpanded = false
 
@@ -33,6 +35,17 @@ struct SeriesDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar { languageMenu }
+        .confirmationDialog(
+            "Alle Downloads von „\(displaySummary.title)“ löschen?",
+            isPresented: $confirmDeleteSeries,
+            titleVisibility: .visible
+        ) {
+            Button("Alle Downloads löschen", role: .destructive) {
+                downloads.deleteAll(seriesSlug: displaySummary.slug)
+                Haptics.notification(.success)
+            }
+            Button("Abbrechen", role: .cancel) {}
+        }
         .task(id: series.slug) {
             await vm.load(series: series, preferredSeason: lastWatched?.episode.season, service: service)
         }
@@ -272,6 +285,16 @@ struct SeriesDetailView: View {
         } else {
             VStack(spacing: 10) {
                 HStack {
+                    if downloads.hasDownloads(in: episodes) {
+                        Button(role: .destructive) {
+                            confirmDeleteSeason = true
+                        } label: {
+                            Label(vm.selectedSeason == 0 ? "Filme löschen" : "Staffel löschen",
+                                  systemImage: "trash")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .tint(Color.red)
+                    }
                     Spacer()
                     Button {
                         downloads.download(series: displaySummary, episodes: episodes,
@@ -299,6 +322,17 @@ struct SeriesDetailView: View {
                 }
             }
             .padding(.horizontal, Theme.screenPadding)
+            .confirmationDialog(
+                vm.selectedSeason == 0 ? "Alle heruntergeladenen Filme dieser Serie löschen?" : "Alle Downloads von Staffel \(vm.selectedSeason) löschen?",
+                isPresented: $confirmDeleteSeason,
+                titleVisibility: .visible
+            ) {
+                Button(vm.selectedSeason == 0 ? "Filme löschen" : "Staffel löschen", role: .destructive) {
+                    downloads.deleteSeason(seriesSlug: displaySummary.slug, season: vm.selectedSeason)
+                    Haptics.notification(.success)
+                }
+                Button("Abbrechen", role: .cancel) {}
+            }
             .confirmationDialog(
                 downloadPromptTitle,
                 isPresented: Binding<Bool>(
@@ -366,14 +400,28 @@ struct SeriesDetailView: View {
     @ToolbarContentBuilder
     private var languageMenu: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Picker("Sprache", selection: languageBinding) {
-                    ForEach(StreamLanguage.allCases, id: \.self) { language in
-                        Text(language.displayName).tag(language)
+            HStack(spacing: 12) {
+                if downloads.hasDownloads(seriesSlug: displaySummary.slug) {
+                    Menu {
+                        Button(role: .destructive) {
+                            confirmDeleteSeries = true
+                        } label: {
+                            Label("Alle Downloads dieser Serie löschen", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
-            } label: {
-                Image(systemName: "globe")
+
+                Menu {
+                    Picker("Sprache", selection: languageBinding) {
+                        ForEach(StreamLanguage.allCases, id: \.self) { language in
+                            Text(language.displayName).tag(language)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "globe")
+                }
             }
         }
     }

@@ -9,6 +9,22 @@ enum DownloadKind: String, Codable {
     case file
 }
 
+/// Quality preset for offline downloads and video compression.
+enum DownloadQuality: String, Codable, CaseIterable, Identifiable, Sendable {
+    case high = "1080p"
+    case medium = "720p"
+    case low = "480p"
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .high: return "Beste Qualität (1080p)"
+        case .medium: return "Speicher sparen (720p, ~50% kleiner)"
+        case .low: return "Kompakt (480p, ~75% kleiner)"
+        }
+    }
+}
+
 /// A finished, playable offline episode.
 struct DownloadRecord: Codable, Identifiable, Hashable {
     /// Episode id (`EpisodeRef.id`).
@@ -22,6 +38,8 @@ struct DownloadRecord: Codable, Identifiable, Hashable {
     var kind: DownloadKind
     var sizeBytes: Int64
     var createdAt: Date
+    /// Ob die Datei hardwarebeschleunigt komprimiert wurde (HEVC).
+    var isCompressed: Bool? = false
 }
 
 enum DownloadJobStatus: String, Codable {

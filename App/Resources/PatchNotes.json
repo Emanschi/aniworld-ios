@@ -3,6 +3,8 @@
     "version": "0.2.1",
     "date": "2026-11-05",
     "notes": [
+      "Staffel-Downloads und Serien lassen sich jetzt mit einem Klick gezielt wieder entfernen.",
+      "Neue Speicheroptionen: Downloads können per Hardware-Encoder (HEVC) komprimiert werden, um bis zu 75% Speicherplatz zu sparen.",
       "Intro- und Outro-Sprünge funktionieren jetzt zuverlässig über alle Staffeln hinweg.",
       "Präzise Skip-Zeiten für lange Serien wie One Piece, Naruto, Bleach, Hunter x Hunter und Death Note korrigiert.",
       "Die Offline-Datenbank für Intro- und Outro-Zeitmarken wurde auf über 2.500 Anime erweitert und bereinigt."
