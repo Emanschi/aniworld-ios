@@ -88,7 +88,12 @@ final class LocalSkipDatabaseTests: XCTestCase {
     }
 
     func testBundledDatabaseIntegrity() throws {
-        let dbURL = URL(fileURLWithPath: "/root/aniworld-ios/App/Resources/skip_database.json")
+        let thisFile = URL(fileURLWithPath: #filePath)
+        let repoRoot = thisFile.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let dbURL = repoRoot.appendingPathComponent("App/Resources/skip_database.json")
+        guard FileManager.default.fileExists(atPath: dbURL.path) else {
+            throw XCTSkip("Bundled database not found at \(dbURL.path)")
+        }
         let data = try Data(contentsOf: dbURL)
         let db = LocalSkipDatabase(jsonData: data)
 

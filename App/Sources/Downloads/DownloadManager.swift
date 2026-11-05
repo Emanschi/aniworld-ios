@@ -324,28 +324,34 @@ final class DownloadManager {
     }
 
     func deleteAll(seriesSlug: String) {
+        let activeJobIDs = jobs.values.filter { $0.series.slug == seriesSlug }.map { $0.id }
+        for id in activeJobIDs { cancel(id) }
         let ids = records.filter { $0.series.slug == seriesSlug }.map { $0.id }
         for id in ids { delete(id) }
     }
 
     /// Deletes all downloads of a specific season.
     func deleteSeason(seriesSlug: String, season: Int) {
+        let activeJobIDs = jobs.values.filter { $0.series.slug == seriesSlug && $0.episode.season == season }.map { $0.id }
+        for id in activeJobIDs { cancel(id) }
         let ids = records.filter { $0.series.slug == seriesSlug && $0.episode.season == season }.map { $0.id }
         for id in ids { delete(id) }
     }
 
     /// Deletes all downloaded episodes across all series.
     func deleteAll() {
+        let activeJobIDs = Array(jobs.keys)
+        for id in activeJobIDs { cancel(id) }
         for record in records { delete(record.id) }
     }
 
     func hasDownloads(seriesSlug: String) -> Bool {
-        records.contains { $0.series.slug == seriesSlug }
+        records.contains { $0.series.slug == seriesSlug } || jobs.values.contains { $0.series.slug == seriesSlug }
     }
 
     func hasDownloads(in episodes: [EpisodeRef]) -> Bool {
         let ids = Set(episodes.map(\.id))
-        return records.contains { ids.contains($0.id) }
+        return records.contains { ids.contains($0.id) } || jobs.values.contains { ids.contains($0.id) }
     }
 
     // MARK: Queue
