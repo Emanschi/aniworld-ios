@@ -349,14 +349,14 @@ private struct PlayerContentView: View {
         if isLeft {
             let target = min(max(baseBrightness + deltaFraction, 0), 1)
             UIScreen.main.brightness = CGFloat(target)
-            withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.8)) {
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                 hudState = PlayerHUDState(kind: .brightness, value: target)
             }
         } else {
             let target = min(max(baseVolume + deltaFraction, 0), 1)
             VolumeController.shared.setVolume(Float(target))
             vm.player.volume = Float(target)
-            withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.8)) {
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                 hudState = PlayerHUDState(kind: .volume, value: target)
             }
         }

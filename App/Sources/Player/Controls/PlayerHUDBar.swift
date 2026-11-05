@@ -86,6 +86,7 @@ struct PlayerHUDBar: View {
 
 // MARK: - System volume bridge
 
+@MainActor
 final class HiddenMPVolumeView: MPVolumeView {
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -93,7 +94,10 @@ final class HiddenMPVolumeView: MPVolumeView {
     }
 }
 
+@MainActor
 struct SystemVolumeView: UIViewRepresentable {
+    typealias UIViewType = HiddenMPVolumeView
+
     func makeUIView(context: Context) -> HiddenMPVolumeView {
         let view = HiddenMPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
         view.alpha = 0.0001

@@ -144,9 +144,10 @@ struct DownloadsView: View {
         }
     }
 
+    @ViewBuilder
     private var list: some View {
         @Bindable var settings = settings
-        return List {
+        List {
             Section {
                 HStack {
                     Image(systemName: "internaldrive")

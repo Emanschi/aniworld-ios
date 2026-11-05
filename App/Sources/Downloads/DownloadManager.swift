@@ -78,23 +78,30 @@ enum DownloadPaths {
 
 // MARK: - Network Watcher
 
-@MainActor
-final class DownloadNetworkWatcher {
+final class DownloadNetworkWatcher: @unchecked Sendable {
     static let shared = DownloadNetworkWatcher()
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "DownloadNetworkWatcher")
-    private(set) var isConnectedToWiFi = true
-    var onPathChange: (() -> Void)?
+    private let lock = NSLock()
+    private var _isConnectedToWiFi = true
+    var onPathChange: (@Sendable () -> Void)?
+
+    var isConnectedToWiFi: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isConnectedToWiFi
+    }
 
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
-                let onWiFi = path.usesInterfaceType(.wifi)
-                let changed = self?.isConnectedToWiFi != onWiFi
-                self?.isConnectedToWiFi = onWiFi
-                if changed {
-                    self?.onPathChange?()
-                }
+            guard let self else { return }
+            let onWiFi = path.usesInterfaceType(.wifi)
+            self.lock.lock()
+            let changed = self._isConnectedToWiFi != onWiFi
+            self._isConnectedToWiFi = onWiFi
+            self.lock.unlock()
+            if changed {
+                self.onPathChange?()
             }
         }
         monitor.start(queue: queue)
