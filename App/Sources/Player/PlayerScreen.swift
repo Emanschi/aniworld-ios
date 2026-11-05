@@ -55,21 +55,33 @@ struct PlayerScreen: View {
             if phase != .active {
                 viewModel?.saveProgress()
                 library.flush()
-                // Screen brightness is a system-wide setting: give it back while we are not in front
-                // (also covers Picture in Picture and the app switcher).
-                if let orig = originalBrightness {
-                    let current = UIScreen.main.brightness
-                    if abs(current - orig) > 0.001 {
-                        playerBrightness = current
-                        UIScreen.main.brightness = orig
-                    }
-                }
-            } else if let custom = playerBrightness {
-                UIScreen.main.brightness = custom
-                playerBrightness = nil
             }
+            updateBrightness()
+        }
+        // The PiP button keeps the app active, so the scene phase alone does not cover it.
+        .onChange(of: viewModel?.isPictureInPictureActive ?? false) { _, _ in
+            updateBrightness()
         }
     }
+
+    /// Screen brightness is a system-wide setting: the player's own value only applies while the
+    /// full-screen player is in front. In the background, the app switcher or Picture in Picture
+    /// (button or swipe) the original brightness is given back, and re-applied on return.
+    private func updateBrightness() {
+        let playerInFront = scenePhase == .active && viewModel?.isPictureInPictureActive != true
+        if !playerInFront {
+            guard let orig = originalBrightness, playerBrightness == nil else { return }
+            let current = UIScreen.main.brightness
+            if abs(current - orig) > 0.001 {
+                playerBrightness = current
+                UIScreen.main.brightness = orig
+            }
+        } else if let custom = playerBrightness {
+            UIScreen.main.brightness = custom
+            playerBrightness = nil
+        }
+    }
+}
 }
 
 // MARK: - Content
