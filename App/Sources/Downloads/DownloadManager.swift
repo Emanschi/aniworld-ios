@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import Network
 import Observation
 import UIKit
 import AniworldKit
@@ -72,6 +73,31 @@ enum DownloadPaths {
             }
         }
         return total
+    }
+}
+
+// MARK: - Network Watcher
+
+@MainActor
+final class DownloadNetworkWatcher {
+    static let shared = DownloadNetworkWatcher()
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "DownloadNetworkWatcher")
+    private(set) var isConnectedToWiFi = true
+    var onPathChange: (() -> Void)?
+
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                let onWiFi = path.usesInterfaceType(.wifi)
+                let changed = self?.isConnectedToWiFi != onWiFi
+                self?.isConnectedToWiFi = onWiFi
+                if changed {
+                    self?.onPathChange?()
+                }
+            }
+        }
+        monitor.start(queue: queue)
     }
 }
 
@@ -193,18 +219,28 @@ final class DownloadManager {
         let hlsConfig = URLSessionConfiguration.background(withIdentifier: Self.hlsSessionID)
         hlsConfig.sessionSendsLaunchEvents = true
         hlsConfig.isDiscretionary = false
+        hlsConfig.allowsCellularAccess = !settings.downloadOnlyOnWiFi
         hlsSession = AVAssetDownloadURLSession(
             configuration: hlsConfig, assetDownloadDelegate: sessionDelegate, delegateQueue: OperationQueue.main)
 
         let fileConfig = URLSessionConfiguration.background(withIdentifier: Self.fileSessionID)
         fileConfig.sessionSendsLaunchEvents = true
         fileConfig.isDiscretionary = false
+        fileConfig.allowsCellularAccess = !settings.downloadOnlyOnWiFi
         fileSession = URLSession(configuration: fileConfig, delegate: sessionDelegate, delegateQueue: OperationQueue.main)
+
+        DownloadNetworkWatcher.shared.onPathChange = { [weak self] in
+            self?.networkChanged()
+        }
 
         Task { await self.restoreTasks() }
     }
 
     // MARK: Queries
+
+    var isWaitingForWiFi: Bool {
+        settings.downloadOnlyOnWiFi && !DownloadNetworkWatcher.shared.isConnectedToWiFi
+    }
 
     var totalBytes: Int64 { records.reduce(Int64(0)) { $0 + $1.sizeBytes } }
 
@@ -314,8 +350,15 @@ final class DownloadManager {
 
     // MARK: Queue
 
+    private func networkChanged() {
+        if !isWaitingForWiFi {
+            pump()
+        }
+    }
+
     private func pump() {
         guard restored else { return }
+        if isWaitingForWiFi { return }
         var running = jobs.values.filter { $0.status == .active }.count
         let queued = jobs.values.filter { $0.status == .queued }.sorted { $0.addedAt < $1.addedAt }
         for job in queued {

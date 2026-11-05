@@ -330,6 +330,9 @@ private struct DownloadsSettingsSection: View {
             Toggle("Gesehene Folgen automatisch löschen", isOn: $settings.autoDeleteWatchedDownloads)
                 .tint(Theme.accent)
 
+            Toggle("Nur im WLAN herunterladen", isOn: $settings.downloadOnlyOnWiFi)
+                .tint(Theme.accent)
+
             HStack {
                 Text("Belegter Speicher")
                 Spacer()

@@ -68,6 +68,10 @@ final class SettingsStore {
     var autoDeleteWatchedDownloads: Bool = false {
         didSet { defaults.set(autoDeleteWatchedDownloads, forKey: Keys.autoDeleteWatchedDownloads) }
     }
+    /// Downloads nur im WLAN durchführen, um mobiles Datenvolumen zu schonen.
+    var downloadOnlyOnWiFi: Bool = true {
+        didSet { defaults.set(downloadOnlyOnWiFi, forKey: Keys.downloadOnlyOnWiFi) }
+    }
 
     var streamPreferences: StreamPreferences {
         StreamPreferences(languagePriority: languagePriority, hosterPriority: hosterPriority)
@@ -91,6 +95,7 @@ final class SettingsStore {
         static let compressDownloads = "settings.compressDownloads"
         static let downloadQuality = "settings.downloadQuality"
         static let autoDeleteWatchedDownloads = "settings.autoDeleteWatchedDownloads"
+        static let downloadOnlyOnWiFi = "settings.downloadOnlyOnWiFi"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -141,6 +146,9 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.autoDeleteWatchedDownloads) != nil {
             autoDeleteWatchedDownloads = defaults.bool(forKey: Keys.autoDeleteWatchedDownloads)
+        }
+        if defaults.object(forKey: Keys.downloadOnlyOnWiFi) != nil {
+            downloadOnlyOnWiFi = defaults.bool(forKey: Keys.downloadOnlyOnWiFi)
         }
     }
 

@@ -172,6 +172,19 @@ struct DownloadsView: View {
                 }
                 .tint(Theme.accent)
                 .listRowBackground(Theme.surface)
+
+                Toggle(isOn: $settings.downloadOnlyOnWiFi) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Nur im WLAN herunterladen")
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                        Text("Schont das mobile Datenvolumen unterwegs")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .tint(Theme.accent)
+                .listRowBackground(Theme.surface)
             }
 
             if !downloads.jobs.isEmpty {
@@ -252,7 +265,7 @@ struct DownloadsView: View {
                     .lineLimit(2)
                 switch job.status {
                 case .queued:
-                    Text("In Warteschlange")
+                    Text(downloads.isWaitingForWiFi ? "Wartet auf WLAN…" : "In Warteschlange")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
                 case .active:
