@@ -67,6 +67,7 @@ struct DownloadButton: View {
 struct DownloadsView: View {
     @Environment(DownloadManager.self) private var downloads
     @Environment(PlaybackCoordinator.self) private var playback
+    @Environment(SettingsStore.self) private var settings
     @State private var confirmDeleteAll = false
     @State private var seriesToDelete: SeriesGroup?
 
@@ -144,7 +145,8 @@ struct DownloadsView: View {
     }
 
     private var list: some View {
-        List {
+        @Bindable var settings = settings
+        return List {
             Section {
                 HStack {
                     Image(systemName: "internaldrive")
@@ -156,6 +158,19 @@ struct DownloadsView: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
                 .font(.subheadline)
+                .listRowBackground(Theme.surface)
+
+                Toggle(isOn: $settings.autoDeleteWatchedDownloads) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Gesehene Folgen automatisch löschen")
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                        Text("Löscht eine Folge nach dem vollständigen Anschauen")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                .tint(Theme.accent)
                 .listRowBackground(Theme.surface)
             }
 

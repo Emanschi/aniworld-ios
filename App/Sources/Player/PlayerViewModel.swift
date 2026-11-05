@@ -522,6 +522,12 @@ final class PlayerViewModel {
         if atEnd { pos = dur }
         library.updateProgress(series: series, episode: episode, language: currentLanguage,
                                position: min(pos, dur), duration: dur)
+
+        // Smart Downloads: Automatisches Löschen gesehener Folgen
+        let isFinished = dur > 0 && (pos / dur >= 0.9 || dur - pos < 60)
+        if isFinished, settings?.autoDeleteWatchedDownloads == true {
+            downloads?.delete(episode.id)
+        }
     }
 
     // MARK: Next episode & autoplay

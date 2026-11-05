@@ -16,10 +16,14 @@ struct PlayerScreen: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var viewModel: PlayerViewModel?
+    @State private var originalBrightness: CGFloat?
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+            SystemVolumeView()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
             if let viewModel {
                 PlayerContentView(vm: viewModel)
             }
@@ -34,8 +38,14 @@ struct PlayerScreen: View {
             viewModel = vm
             vm.start()
         }
-        .onAppear { PlayerOrientation.enterPlayer() }
+        .onAppear {
+            originalBrightness = UIScreen.main.brightness
+            PlayerOrientation.enterPlayer()
+        }
         .onDisappear {
+            if let orig = originalBrightness {
+                UIScreen.main.brightness = orig
+            }
             viewModel?.shutdown()
             PlayerOrientation.leavePlayer()
         }
@@ -65,6 +75,11 @@ private struct PlayerContentView: View {
     @State private var locked = false
     @State private var bubble: SeekBubble?
     @State private var bubbleTask: Task<Void, Never>?
+    @State private var hudState: PlayerHUDState?
+    @State private var hudDismissTask: Task<Void, Never>?
+    @State private var isActivelySwiping = false
+    @State private var baseBrightness: Double = 0.5
+    @State private var baseVolume: Double = 0.5
 
     private var isPlaying: Bool { vm.state == .playing }
 
@@ -91,9 +106,30 @@ private struct PlayerContentView: View {
             Color.black.ignoresSafeArea()
             surface
             if isPlaying {
-                PlayerGestureLayer(onTap: handleTap, onDoubleTap: handleDoubleTap)
+                PlayerGestureLayer(
+                    onTap: handleTap,
+                    onDoubleTap: handleDoubleTap,
+                    onVerticalSwipe: handleVerticalSwipe,
+                    onSwipeEnd: handleSwipeEnd
+                )
             }
             feedbackLayer
+            if let hudState {
+                HStack {
+                    if hudState.kind == .brightness {
+                        PlayerHUDBar(state: hudState)
+                            .padding(.leading, 36)
+                        Spacer()
+                    } else {
+                        Spacer()
+                        PlayerHUDBar(state: hudState)
+                            .padding(.trailing, 36)
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .allowsHitTesting(false)
+                .zIndex(8)
+            }
             controlsLayer
             lockLayer
             if isPlaying && !locked {
@@ -136,7 +172,10 @@ private struct PlayerContentView: View {
             controlsShown = true
             bump()
         }
-        .onDisappear { bubbleTask?.cancel() }
+        .onDisappear {
+            bubbleTask?.cancel()
+            hudDismissTask?.cancel()
+        }
     }
 
     // MARK: Layers
@@ -296,6 +335,44 @@ private struct PlayerContentView: View {
             controlsShown = true
         }
         bump()
+    }
+
+    private func handleVerticalSwipe(isLeft: Bool, deltaFraction: Double) {
+        guard !locked else { return }
+        if !isActivelySwiping {
+            isActivelySwiping = true
+            baseBrightness = Double(UIScreen.main.brightness)
+            baseVolume = Double(VolumeController.shared.currentVolume)
+            hudDismissTask?.cancel()
+        }
+
+        if isLeft {
+            let target = min(max(baseBrightness + deltaFraction, 0), 1)
+            UIScreen.main.brightness = CGFloat(target)
+            withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.8)) {
+                hudState = PlayerHUDState(kind: .brightness, value: target)
+            }
+        } else {
+            let target = min(max(baseVolume + deltaFraction, 0), 1)
+            VolumeController.shared.setVolume(Float(target))
+            vm.player.volume = Float(target)
+            withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.8)) {
+                hudState = PlayerHUDState(kind: .volume, value: target)
+            }
+        }
+        bump()
+    }
+
+    private func handleSwipeEnd() {
+        isActivelySwiping = false
+        hudDismissTask?.cancel()
+        hudDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if Task.isCancelled { return }
+            withAnimation(.easeOut(duration: 0.25)) {
+                hudState = nil
+            }
+        }
     }
 }
 

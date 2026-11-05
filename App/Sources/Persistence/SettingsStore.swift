@@ -64,6 +64,10 @@ final class SettingsStore {
     var downloadQuality: DownloadQuality = .medium {
         didSet { defaults.set(downloadQuality.rawValue, forKey: Keys.downloadQuality) }
     }
+    /// Gesehene Folgen nach dem Anschauen automatisch aus den Downloads löschen.
+    var autoDeleteWatchedDownloads: Bool = false {
+        didSet { defaults.set(autoDeleteWatchedDownloads, forKey: Keys.autoDeleteWatchedDownloads) }
+    }
 
     var streamPreferences: StreamPreferences {
         StreamPreferences(languagePriority: languagePriority, hosterPriority: hosterPriority)
@@ -86,6 +90,7 @@ final class SettingsStore {
         static let notifyAppUpdates = "settings.notifyAppUpdates"
         static let compressDownloads = "settings.compressDownloads"
         static let downloadQuality = "settings.downloadQuality"
+        static let autoDeleteWatchedDownloads = "settings.autoDeleteWatchedDownloads"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -133,6 +138,9 @@ final class SettingsStore {
         if let rawQuality = defaults.string(forKey: Keys.downloadQuality),
            let quality = DownloadQuality(rawValue: rawQuality) {
             downloadQuality = quality
+        }
+        if defaults.object(forKey: Keys.autoDeleteWatchedDownloads) != nil {
+            autoDeleteWatchedDownloads = defaults.bool(forKey: Keys.autoDeleteWatchedDownloads)
         }
     }
 
