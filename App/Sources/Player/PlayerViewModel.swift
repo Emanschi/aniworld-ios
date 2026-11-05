@@ -70,6 +70,8 @@ final class PlayerViewModel {
     @ObservationIgnored private var settings: SettingsStore?
     @ObservationIgnored private weak var coordinator: PlaybackCoordinator?
     @ObservationIgnored private var downloads: DownloadManager?
+    @ObservationIgnored private var stats: WatchStatsStore?
+    @ObservationIgnored private var recorder: WatchSessionRecorder?
 
     @ObservationIgnored private var hosters: [HosterLink] = []
     @ObservationIgnored private var hostersEpisodeID: String?
@@ -123,7 +125,8 @@ final class PlayerViewModel {
     // MARK: Lifecycle
 
     func attach(service: AniworldService, library: LibraryStore, settings: SettingsStore,
-                coordinator: PlaybackCoordinator, downloads: DownloadManager? = nil) {
+                coordinator: PlaybackCoordinator, downloads: DownloadManager? = nil,
+                stats: WatchStatsStore? = nil) {
         guard !attached else { return }
         attached = true
         self.service = service
@@ -131,6 +134,8 @@ final class PlayerViewModel {
         self.settings = settings
         self.coordinator = coordinator
         self.downloads = downloads
+        self.stats = stats
+        if let stats { recorder = WatchSessionRecorder(store: stats) }
 
         player.defaultRate = playbackRate
         pip.onActiveChange = { [weak self] active in self?.isPictureInPictureActive = active }
@@ -162,6 +167,7 @@ final class PlayerViewModel {
         guard !isShutdown else { return }
         saveProgress()
         library?.flush()
+        recorder?.clear()
         isShutdown = true
         generation += 1
         loadTask?.cancel()
@@ -256,7 +262,8 @@ final class PlayerViewModel {
             availableLanguages = []
             availableHosters = []
             loadSkipTimes(service: service, gen: gen)
-            attach(stream: local, language: local.language, start: startAt ?? savedStartPosition(), gen: gen)
+            attach(stream: local, language: local.language, start: startAt ?? savedStartPosition(), gen: gen,
+                   offline: true)
             return
         }
         do {
@@ -307,8 +314,13 @@ final class PlayerViewModel {
         return 0
     }
 
-    private func attach(stream: ResolvedStream, language: StreamLanguage?, start: Double, gen: Int) {
+    private func attach(stream: ResolvedStream, language: StreamLanguage?, start: Double, gen: Int,
+                        offline: Bool = false) {
         removeItemObservers()
+        recorder?.prepare(WatchSessionRecorder.Context(
+            series: series, episode: episode, language: language ?? stream.language,
+            hoster: stream.hoster, offline: offline))
+        rememberSeriesMeta()
         let asset = AVURLAsset(url: stream.url, options: ["AVURLAssetHTTPHeaderFieldsKey": stream.headers])
         let item = AVPlayerItem(asset: asset)
         item.externalMetadata = metadata()
@@ -419,6 +431,7 @@ final class PlayerViewModel {
         guard gen == generation, !isShutdown else { return }
         if duration > 0 { position = duration }
         saveProgress(atEnd: true)
+        recorder?.markEnded()
         guard settings?.autoplayNext == true else { return }
         Task { [weak self] in
             guard let self else { return }
@@ -472,6 +485,9 @@ final class PlayerViewModel {
         updateBuffering()
 
         let currentPos = s.isFinite ? s : position
+        recorder?.tick(position: currentPos, duration: duration,
+                       isPlaying: player.timeControlStatus == .playing && player.rate > 0,
+                       rate: Double(player.rate))
         if skipStateEpisodeID != episode.id {
             skipStateEpisodeID = episode.id
             skippedSegmentIds = []
@@ -500,6 +516,7 @@ final class PlayerViewModel {
                 autoSkippedIds.insert(active.skipId)
                 skippedSegmentIds.insert(active.skipId)
                 activeSkipSegment = nil
+                recorder?.noteSkipped(seconds: skippedAmount(to: active.interval.endTime, from: currentPos))
                 if wantsNextOnOutro {
                     if countdown == nil { startCountdown() }
                 } else {
@@ -608,6 +625,7 @@ final class PlayerViewModel {
     }
 
     private func switchEpisode(to next: EpisodeRef, episodes: [EpisodeRef], startAt: Double?) {
+        recorder?.clear()
         countdownTask?.cancel()
         countdown = nil
         saveProgress()
@@ -747,6 +765,7 @@ final class PlayerViewModel {
             skippedSegmentIds.insert(id)
             autoSkippedIds.insert(id)
             let target = activeSkipSegment?.skipId == id ? activeSkipSegment?.interval.endTime : nil
+            if let target { recorder?.noteSkipped(seconds: skippedAmount(to: target, from: currentSeconds())) }
             activeSkipSegment = nil
             if pill.isEnding && settings?.autoplayNext == true && hasNext {
                 // Outro skip goes straight to the next episode (countdown card).
@@ -761,12 +780,38 @@ final class PlayerViewModel {
             skipInFlight = false
         } else {
             fixedIntroSkipUsed = true
+            recorder?.noteSkipped(seconds: Double(introSkipSeconds))
             seek(to: currentSeconds() + Double(introSkipSeconds)) { [weak self] in self?.skipInFlight = false }
         }
     }
 
     func skipIntro() {
+        recorder?.noteSkipped(seconds: Double(introSkipSeconds))
         seek(to: currentSeconds() + Double(introSkipSeconds))
+    }
+
+    private func skippedAmount(to target: Double, from current: Double) -> Double {
+        let limit = duration > 0 ? min(target, duration) : target
+        return max(limit - current, 0)
+    }
+
+    // MARK: Statistics
+
+    /// Ends the running watch session (app in the background) and writes the statistics to disk.
+    func flushStats() {
+        recorder?.finish()
+        stats?.flush()
+    }
+
+    /// Remembers genres / age rating of the series once, so the statistics can show favourite genres.
+    private func rememberSeriesMeta() {
+        guard let stats, let service, !stats.hasMeta(forSlug: series.slug) else { return }
+        let slug = series.slug
+        Task { [weak stats] in
+            if let detail = try? await service.seriesDetail(slug: slug) {
+                stats?.noteSeries(detail)
+            }
+        }
     }
 
     private func clamped(_ seconds: Double) -> Double {

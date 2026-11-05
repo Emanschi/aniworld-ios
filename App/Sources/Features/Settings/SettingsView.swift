@@ -3,6 +3,8 @@ import AniworldKit
 
 struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(WatchStatsStore.self) private var stats
+    @State private var confirmResetStats = false
     @State private var confirmClearHistory = false
     @State private var confirmReset = false
 
@@ -24,6 +26,12 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { EditButton() }
             }
+            .confirmationDialog("Statistik zurücksetzen?", isPresented: $confirmResetStats, titleVisibility: .visible) {
+                Button("Statistik zurücksetzen", role: .destructive) { stats.reset() }
+                Button("Abbrechen", role: .cancel) {}
+            } message: {
+                Text("Alle gespeicherten Statistiken werden gelöscht, auch auf deinen anderen Geräten (bei aktivem iCloud-Sync).")
+            }
             .confirmationDialog("Gesamten Verlauf löschen?", isPresented: $confirmClearHistory, titleVisibility: .visible) {
                 Button("Verlauf löschen", role: .destructive) { library.clearHistory() }
                 Button("Abbrechen", role: .cancel) {}
@@ -43,6 +51,12 @@ struct SettingsView: View {
 
     private var dataSection: some View {
         Section("Daten") {
+            NavigationLink {
+                StatsView()
+            } label: {
+                Label("Statistiken", systemImage: "chart.bar.xaxis")
+            }
+            Button("Statistik zurücksetzen", role: .destructive) { confirmResetStats = true }
             Button("Verlauf löschen", role: .destructive) { confirmClearHistory = true }
             Button("Alles zurücksetzen", role: .destructive) { confirmReset = true }
         }

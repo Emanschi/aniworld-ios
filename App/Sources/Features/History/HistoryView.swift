@@ -22,6 +22,11 @@ struct HistoryView: View {
             .background(AppBackground())
             .navigationTitle("Weiterschauen")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink(destination: StatsView()) {
+                        Label("Statistiken", systemImage: "chart.bar.xaxis")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(role: .destructive) {
                         confirmClear = true

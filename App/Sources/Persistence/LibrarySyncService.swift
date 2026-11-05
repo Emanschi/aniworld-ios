@@ -23,6 +23,7 @@ final class LibrarySyncService {
     private enum Mode { case full, writeOnly }
 
     @ObservationIgnored private let library: LibraryStore
+    @ObservationIgnored private let stats: WatchStatsStore
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private var started = false
     @ObservationIgnored private var tokens: [NSObjectProtocol] = []
@@ -33,6 +34,7 @@ final class LibrarySyncService {
     @ObservationIgnored private var queuedMode: Mode?
     @ObservationIgnored private var lastWrittenState: LibraryState?
     @ObservationIgnored private var lastWriteAt: Date?
+    @ObservationIgnored private var lastWrittenStatsRevision: Int?
 
     private static let deviceIDKey = "sync.deviceID"
     private static let dismissedKey = "sync.onboardingDismissed"
@@ -43,8 +45,9 @@ final class LibrarySyncService {
 
     let deviceID: String
 
-    init(library: LibraryStore) {
+    init(library: LibraryStore, stats: WatchStatsStore) {
         self.library = library
+        self.stats = stats
         let defaults = UserDefaults.standard
         if let id = defaults.string(forKey: Self.deviceIDKey) {
             deviceID = id
@@ -67,6 +70,7 @@ final class LibrarySyncService {
         started = true
 
         library.onChange = { [weak self] in self?.libraryDidChange() }
+        stats.onChange = { [weak self] in self?.libraryDidChange() }
 
         let center = NotificationCenter.default
         tokens.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification,
@@ -101,6 +105,7 @@ final class LibrarySyncService {
         showOnboarding = false
         lastError = nil
         lastWrittenState = nil
+        lastWrittenStatsRevision = nil
         devices = []
         requestSync(.full, background: false, force: true)
     }
@@ -119,6 +124,7 @@ final class LibrarySyncService {
         lastSyncAt = nil
         defaults.removeObject(forKey: Self.lastSyncKey)
         lastWrittenState = nil
+        lastWrittenStatsRevision = nil
         debounceTask?.cancel()
         retryTask?.cancel()
         // Don't show the onboarding again right after switching sync off.
@@ -200,6 +206,8 @@ final class LibrarySyncService {
                 // Merge against the *current* local state (it may have changed during the read).
                 let merged = LibraryMerge.merge([library.exportState()] + read.snapshots.map { $0.state })
                 library.apply(merged: merged)
+                let mergedStats = StatsMerge.merge([stats.exportState()] + read.snapshots.map { $0.statsState })
+                stats.apply(merged: mergedStats)
                 devices = read.snapshots
                     .map { SyncDevice(id: $0.deviceID, name: $0.deviceName, writtenAt: $0.writtenAt) }
                     .sorted { $0.writtenAt > $1.writtenAt }
@@ -208,12 +216,15 @@ final class LibrarySyncService {
 
             let state = library.exportState()
             let stale = lastWriteAt.map { Date().timeIntervalSince($0) > Self.heartbeatSeconds } ?? true
-            if force || stale || state != lastWrittenState {
-                let snapshot = SyncSnapshot(deviceID: ownID, deviceName: deviceName, state: state)
+            let statsRevision = stats.localRevision
+            if force || stale || state != lastWrittenState || statsRevision != lastWrittenStatsRevision {
+                let snapshot = SyncSnapshot(deviceID: ownID, deviceName: deviceName, state: state,
+                                            stats: stats.exportOwnState())
                 try await Task.detached(priority: .utility) {
                     try SyncFolderIO.write(snapshot, picked: picked)
                 }.value
                 lastWrittenState = state
+                lastWrittenStatsRevision = statsRevision
                 lastWriteAt = Date()
             }
             lastError = nil

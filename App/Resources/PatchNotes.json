@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.4.0",
+    "date": "2026-11-06",
+    "notes": [
+      "Neu: Statistiken mit deinem Monatsrückblick – Sehzeit, Lieblingsserien und -genres, Sprachen, aktivste Tage und Uhrzeiten, längster Binge und mehr.",
+      "Zu Beginn eines neuen Monats zeigt dir die Startseite deinen Rückblick als Story zum Durchwischen.",
+      "Die Statistiken werden über den iCloud-Ordner-Sync auf alle Geräte übertragen und lassen sich in den Einstellungen zurücksetzen."
+    ]
+  },
+  {
     "version": "0.3.0",
     "date": "2026-11-05",
     "notes": [
