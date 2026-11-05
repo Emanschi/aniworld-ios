@@ -258,6 +258,48 @@ final class LibraryStore {
         scheduleSave()
     }
 
+    /// Whether any episode of the series (or of one season) has progress or is marked watched.
+    func hasProgress(seriesSlug: String, season: Int? = nil) -> Bool {
+        progressByEpisode.contains { id, p in
+            Self.matches(id, seriesSlug: seriesSlug, season: season) && (p.watched || p.position > 0)
+        }
+    }
+
+    /// Resets position and watched state of one episode, a season or the whole series, e.g. to
+    /// watch it again. Entries are kept with a new date (not deleted) so iCloud sync doesn't bring
+    /// the old progress back from another device. The "Weiterschauen" entry goes too.
+    func resetProgress(seriesSlug: String, season: Int? = nil, episodeID: String? = nil) {
+        let now = Date()
+        var changed = false
+        for (id, var p) in progressByEpisode {
+            if let episodeID { guard id == episodeID else { continue } }
+            guard Self.matches(id, seriesSlug: seriesSlug, season: season), p.watched || p.position > 0 else { continue }
+            p.position = 0
+            p.watched = false
+            p.updatedAt = now
+            progressByEpisode[id] = p
+            changed = true
+        }
+        if let entry = history.first(where: { $0.series.slug == seriesSlug }),
+           episodeID.map({ $0 == entry.episode.id }) ?? Self.matches(entry.episode.id, seriesSlug: seriesSlug, season: season) {
+            history.removeAll { $0.series.slug == seriesSlug }
+            historyTombstones[seriesSlug] = now
+            changed = true
+        }
+        if changed { scheduleSave() }
+    }
+
+    /// `EpisodeRef.id` is "<slug>-s<season>e<number>"; match exactly so "naruto" doesn't hit
+    /// "naruto-shippuden".
+    private static func matches(_ id: String, seriesSlug: String, season: Int?) -> Bool {
+        let prefix = seriesSlug + "-s"
+        guard id.hasPrefix(prefix) else { return false }
+        let rest = id.dropFirst(prefix.count)
+        guard let e = rest.firstIndex(of: "e"), let s = Int(rest[..<e]),
+              Int(rest[rest.index(after: e)...]) != nil else { return false }
+        return season.map { $0 == s } ?? true
+    }
+
     func removeFromHistory(_ slug: String) {
         history.removeAll { $0.series.slug == slug }
         historyTombstones[slug] = Date()
