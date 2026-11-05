@@ -1,5 +1,25 @@
 [
   {
+    "version": "0.2.2",
+    "date": "2026-11-05",
+    "notes": [
+      "Auf der Serienseite wird jetzt die Altersfreigabe (FSK) angezeigt.",
+      "Neue Genre-Filter in der Suche: Wähle ein oder mehrere Genres, auch kombiniert mit einem Suchbegriff.",
+      "Genres auf der Serienseite sind antippbar und zeigen alle Serien dieses Genres.",
+      "Neu: „Alle Animes A–Z“ in der Suche, mit Buchstaben-Schnellsprung und Filterfeld.",
+      "Neu: Ein Kalender auf der Startseite zeigt, wann neue Folgen erscheinen.",
+      "Gesehene Downloads werden erst gelöscht, wenn du die Folge verlässt – nie mehr während sie läuft.",
+      "Komprimierte Downloads erscheinen erst nach dem Komprimieren in der Liste; bei einem Fehler bleibt die Originaldatei erhalten.",
+      "Die Komprimierungsstufen sind jetzt korrekt beschrieben.",
+      "„Nur im WLAN herunterladen“ wirkt sofort, ohne Neustart der App.",
+      "Fehlerseiten von Hostern werden nicht mehr als fertiger Download gespeichert.",
+      "Das Wischen für die Lautstärke ändert nur noch die Systemlautstärke und reagiert nur auf senkrechtes Wischen.",
+      "Die Bildschirmhelligkeit wird zurückgesetzt, wenn die App in den Hintergrund oder in Bild-in-Bild wechselt.",
+      "Das Löschen von Staffel-Downloads in den Serien-Details funktioniert zuverlässiger.",
+      "Korrektur: Eine mitgelieferte Intro-Datenbank ist entgegen der letzten Patchnotes noch nicht enthalten. Eigene Intro- und Outro-Zeiten funktionieren wie gewohnt."
+    ]
+  },
+  {
     "version": "0.2.1",
     "date": "2026-11-05",
     "notes": [
@@ -7,10 +27,7 @@
       "Downloads nur im WLAN: Neue Option, um unterwegs das mobile Datenvolumen zu schonen.",
       "Neue Player-Gesten (Netflix-Stil): Wischen auf der linken Displayhälfte regelt die Helligkeit, auf der rechten Seite die Lautstärke mit dezenten vertikalen Statusbalken.",
       "Staffel-Downloads und Serien lassen sich jetzt mit einem Klick gezielt wieder entfernen.",
-      "Neue Speicheroptionen: Downloads können per Hardware-Encoder (HEVC) komprimiert werden, um bis zu 75% Speicherplatz zu sparen.",
-      "Intro- und Outro-Sprünge funktionieren jetzt zuverlässig über alle Staffeln hinweg.",
-      "Präzise Skip-Zeiten für lange Serien wie One Piece, Naruto, Bleach, Hunter x Hunter und Death Note korrigiert.",
-      "Die Offline-Datenbank für Intro- und Outro-Zeitmarken wurde auf über 2.500 Anime erweitert und bereinigt."
+      "Neue Speicheroptionen: Downloads können komprimiert werden, um Speicherplatz zu sparen."
     ]
   },
   {

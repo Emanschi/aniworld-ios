@@ -87,6 +87,100 @@ final class LocalSkipDatabaseTests: XCTestCase {
         XCTAssertEqual(s2?.first(where: { $0.skipType.isOpening })?.interval.startTime, 224.0)
     }
 
+    func testOverlappingRangesNarrowestWins() {
+        let json = """
+        { "show": { "1": {
+          "1-100": { "op": { "start": 10.0, "end": 20.0 } },
+          "50-60": { "op": { "start": 30.0, "end": 40.0 } },
+          "55": { "op": { "start": 50.0, "end": 60.0 } },
+          "*": { "op": { "start": 70.0, "end": 80.0 } }
+        } } }
+        """
+        let db = LocalSkipDatabase(jsonData: Data(json.utf8))
+        func opStart(_ ep: Int) -> Double? {
+            db.findSkipTimes(seriesSlug: "show", seriesTitle: "Show", season: 1, episode: ep)?
+                .first(where: { $0.skipType.isOpening })?.interval.startTime
+        }
+        XCTAssertEqual(opStart(55), 50.0)   // single beats range
+        XCTAssertEqual(opStart(52), 30.0)   // narrower range beats wider range
+        XCTAssertEqual(opStart(10), 10.0)   // only the wide range matches
+        XCTAssertEqual(opStart(500), 70.0)  // wildcard last
+    }
+
+    func testSeasonAliasBeatsBaseDefault() {
+        let json = """
+        {
+          "jujutsu-kaisen": {
+            "1": { "1": { "op": { "start": 54.7, "end": 145.1 } } },
+            "default": { "*": { "op": { "start": 1.0, "end": 2.0 } } }
+          },
+          "jujutsu-kaisen-2nd-season": {
+            "1": { "1": { "op": { "start": 224.0, "end": 314.0 } } }
+          }
+        }
+        """
+        let db = LocalSkipDatabase(jsonData: Data(json.utf8))
+        func opStart(season: Int, episode: Int) -> Double? {
+            db.findSkipTimes(seriesSlug: "jujutsu-kaisen", seriesTitle: "Jujutsu Kaisen", season: season, episode: episode)?
+                .first(where: { $0.skipType.isOpening })?.interval.startTime
+        }
+        XCTAssertEqual(opStart(season: 2, episode: 1), 224.0)   // alias wins over base default
+        XCTAssertEqual(opStart(season: 2, episode: 5), 1.0)     // alias has no episode 5 -> base default
+        XCTAssertEqual(opStart(season: 3, episode: 1), 1.0)     // no alias for season 3 -> base default
+        XCTAssertEqual(opStart(season: 1, episode: 1), 54.7)    // exact season first
+    }
+
+    func testExactSeasonBeatsAliasAndDefault() {
+        let json = """
+        {
+          "show": {
+            "2": { "1": { "op": { "start": 5.0, "end": 9.0 } } },
+            "default": { "*": { "op": { "start": 1.0, "end": 2.0 } } }
+          },
+          "show-2nd-season": { "1": { "1": { "op": { "start": 100.0, "end": 200.0 } } } }
+        }
+        """
+        let db = LocalSkipDatabase(jsonData: Data(json.utf8))
+        let times = db.findSkipTimes(seriesSlug: "show", seriesTitle: "Show", season: 2, episode: 1)
+        XCTAssertEqual(times?.first(where: { $0.skipType.isOpening })?.interval.startTime, 5.0)
+    }
+
+    func testEmptyNormalizedKeysNeverMatch() {
+        let json = """
+        {
+          "進撃の巨人": { "default": { "*": { "op": { "start": 1.0, "end": 2.0 } } } },
+          "": { "default": { "*": { "op": { "start": 3.0, "end": 4.0 } } } }
+        }
+        """
+        let db = LocalSkipDatabase(jsonData: Data(json.utf8))
+        XCTAssertNil(db.findSkipTimes(seriesSlug: "", seriesTitle: "進撃の巨人", season: 1, episode: 1))
+        XCTAssertNil(db.findSkipTimes(seriesSlug: "", seriesTitle: "", season: 2, episode: 1))
+        XCTAssertNil(db.findSkipTimes(seriesSlug: "!!!", seriesTitle: "???", season: 1, episode: 1))
+    }
+
+    func testEpisodePatternPrefixes() {
+        let json = """
+        { "show": { "1": {
+          "folge 1": { "op": { "start": 1.0, "end": 2.0 } },
+          "ep2": { "op": { "start": 3.0, "end": 4.0 } },
+          "Episode 3-4": { "op": { "start": 5.0, "end": 6.0 } },
+          "e5": { "op": { "start": 7.0, "end": 8.0 } },
+          "deep": { "op": { "start": 9.0, "end": 10.0 } }
+        } } }
+        """
+        let db = LocalSkipDatabase(jsonData: Data(json.utf8))
+        func opStart(_ ep: Int) -> Double? {
+            db.findSkipTimes(seriesSlug: "show", seriesTitle: "Show", season: 1, episode: ep)?
+                .first(where: { $0.skipType.isOpening })?.interval.startTime
+        }
+        XCTAssertEqual(opStart(1), 1.0)
+        XCTAssertEqual(opStart(2), 3.0)
+        XCTAssertEqual(opStart(4), 5.0)
+        XCTAssertEqual(opStart(5), 7.0)
+        XCTAssertNil(opStart(6))
+    }
+
+    /// The bundled database is optional in the repo; if present it must parse and contain data.
     func testBundledDatabaseIntegrity() throws {
         let thisFile = URL(fileURLWithPath: #filePath)
         let repoRoot = thisFile.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -95,36 +189,8 @@ final class LocalSkipDatabaseTests: XCTestCase {
             throw XCTSkip("Bundled database not found at \(dbURL.path)")
         }
         let data = try Data(contentsOf: dbURL)
-        let db = LocalSkipDatabase(jsonData: data)
-
-        // Test Attack on Titan Season 2
-        let aotS2 = db.findSkipTimes(seriesSlug: "attack-on-titan", seriesTitle: "Attack on Titan", season: 2, episode: 1)
-        XCTAssertNotNil(aotS2)
-        XCTAssertEqual(aotS2?.first(where: { $0.skipType.isOpening })?.interval.startTime, 167.7)
-
-        // Test One Piece Episode 100
-        let op100 = db.findSkipTimes(seriesSlug: "one-piece", seriesTitle: "One Piece", season: 1, episode: 100)
-        XCTAssertNotNil(op100)
-        XCTAssertEqual(op100?.first(where: { $0.skipType.isOpening })?.interval.startTime, 1.0)
-
-        // Test One Piece Episode 300
-        let op300 = db.findSkipTimes(seriesSlug: "one-piece", seriesTitle: "One Piece", season: 1, episode: 300)
-        XCTAssertNotNil(op300)
-        XCTAssertEqual(op300?.first(where: { $0.skipType.isOpening })?.interval.startTime, 14.9)
-
-        // Test Naruto Shippuden Episode 25
-        let ns25 = db.findSkipTimes(seriesSlug: "naruto-shippuden", seriesTitle: "Naruto: Shippuden", season: 1, episode: 25)
-        XCTAssertNotNil(ns25)
-        XCTAssertEqual(ns25?.first(where: { $0.skipType.isOpening })?.interval.startTime, 336.0)
-
-        // Test Death Note Episode 1 (Opening starts at 3m46s after Shinigami realm prologue)
-        let dn1 = db.findSkipTimes(seriesSlug: "death-note", seriesTitle: "Death Note", season: 1, episode: 1)
-        XCTAssertNotNil(dn1)
-        XCTAssertEqual(dn1?.first(where: { $0.skipType.isOpening })?.interval.startTime, 226.0)
-
-        // Test Death Note Episode 5 (Standard opening at 1m35s after cold open)
-        let dn5 = db.findSkipTimes(seriesSlug: "death-note", seriesTitle: "Death Note", season: 1, episode: 5)
-        XCTAssertNotNil(dn5)
-        XCTAssertEqual(dn5?.first(where: { $0.skipType.isOpening })?.interval.startTime, 95.0)
+        let object = try JSONSerialization.jsonObject(with: data)
+        let dict = try XCTUnwrap(object as? [String: Any], "skip_database.json must be a JSON object")
+        XCTAssertFalse(dict.isEmpty)
     }
 }

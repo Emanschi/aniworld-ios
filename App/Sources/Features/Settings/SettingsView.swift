@@ -316,11 +316,11 @@ private struct DownloadsSettingsSection: View {
     var body: some View {
         @Bindable var settings = settings
         Section {
-            Toggle("Downloads komprimieren (HEVC)", isOn: $settings.compressDownloads)
+            Toggle("Downloads komprimieren", isOn: $settings.compressDownloads)
                 .tint(Theme.accent)
 
             if settings.compressDownloads {
-                Picker("Qualität & Komprimierung", selection: $settings.downloadQuality) {
+                Picker("Komprimierung", selection: $settings.downloadQuality) {
                     ForEach(DownloadQuality.allCases) { quality in
                         Text(quality.title).tag(quality)
                     }
@@ -348,7 +348,7 @@ private struct DownloadsSettingsSection: View {
         } header: {
             Text("Downloads & Speicher")
         } footer: {
-            Text("Komprimiert heruntergeladene Videos mit hardwarebeschleunigtem H.265/HEVC direkt auf dem Gerät. Spart 50–75% Speicherplatz bei gleichbleibend flüssiger Wiedergabe.")
+            Text("Kodiert heruntergeladene MP4-Dateien nach dem Download auf dem Gerät neu, um Speicher zu sparen. „Hoch“ nutzt HEVC in Originalauflösung, die kleineren Stufen verkleinern auf 720p bzw. 480p. Wie viel das spart, hängt vom Video ab; wird die Datei nicht kleiner, bleibt das Original. HLS-Downloads werden nicht komprimiert.")
         }
         .confirmationDialog("Alle Downloads löschen?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
             Button("Alle Downloads löschen", role: .destructive) {

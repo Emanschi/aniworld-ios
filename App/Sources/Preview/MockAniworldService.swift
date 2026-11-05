@@ -56,8 +56,28 @@ struct MockAniworldService: AniworldService {
             genres: ["Action", "Abenteuer", "Shounen", "Fantasy"],
             startYear: 2002,
             endYear: series.slug == "naruto" ? 2007 : nil,
-            seasons: [SeasonRef(number: 0), SeasonRef(number: 1), SeasonRef(number: 2), SeasonRef(number: 3)]
+            seasons: [SeasonRef(number: 0), SeasonRef(number: 1), SeasonRef(number: 2), SeasonRef(number: 3)],
+            ageRating: 12,
+            genreRefs: sampleGenres.prefix(4).map { $0 }
         )
+    }
+
+    static let sampleGenres: [GenreRef] = [
+        GenreRef(slug: "action", name: "Action"),
+        GenreRef(slug: "abenteuer", name: "Abenteuer"),
+        GenreRef(slug: "shounen", name: "Shounen"),
+        GenreRef(slug: "fantasy", name: "Fantasy"),
+        GenreRef(slug: "comedy", name: "Comedy"),
+        GenreRef(slug: "thriller", name: "Thriller"),
+        GenreRef(slug: "sci-fi", name: "Sci-Fi")
+    ]
+
+    /// Deterministic fake genre membership for previews.
+    private static func members(of slug: String) -> [SeriesSummary] {
+        guard let index = sampleGenres.firstIndex(where: { $0.slug == slug }) else { return [] }
+        return sampleSeries.enumerated()
+            .filter { ($0.offset + index) % 2 == 0 || index < 2 }
+            .map { $0.element }
     }
 
     // MARK: AniworldService
@@ -115,6 +135,37 @@ struct MockAniworldService: AniworldService {
             HomeSection(title: "Neue Episoden", items: Array(all.prefix(6))),
             HomeSection(title: "Beliebte Animes", items: Array(all.dropFirst(3).prefix(8))),
             HomeSection(title: "Neu auf AniWorld", items: Array(all.suffix(5)))
+        ]
+    }
+
+    func genres() async throws -> [GenreRef] {
+        try await Task.sleep(for: latency)
+        return Self.sampleGenres
+    }
+
+    func series(inGenre slug: String) async throws -> [SeriesSummary] {
+        try await Task.sleep(for: latency)
+        return Self.members(of: slug)
+    }
+
+    func allSeries() async throws -> [SeriesSummary] {
+        try await Task.sleep(for: latency)
+        return Self.sampleSeries.sorted { $0.title < $1.title }
+    }
+
+    func releaseCalendar() async throws -> [CalendarDay] {
+        try await Task.sleep(for: latency)
+        let all = Self.sampleSeries
+        return [
+            CalendarDay(title: "Heute", entries: all.prefix(3).enumerated().map { offset, series in
+                CalendarEntry(id: "today-\(series.slug)", series: series, info: "Staffel 2 · Folge \(offset + 5)")
+            }),
+            CalendarDay(title: "Morgen", entries: all.dropFirst(3).prefix(2).map { series in
+                CalendarEntry(id: "tomorrow-\(series.slug)", series: series, info: "Neue Folge")
+            }),
+            CalendarDay(title: "Übermorgen", entries: all.dropFirst(5).prefix(2).map { series in
+                CalendarEntry(id: "later-\(series.slug)", series: series, info: "Staffel 1 · Folge 1")
+            })
         ]
     }
 }

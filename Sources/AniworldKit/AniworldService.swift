@@ -35,6 +35,25 @@ public protocol AniworldService: Sendable {
 
     /// Liefert Intro-, Outro- und Recap-Zeitmarken für eine Episode (oder leer, falls keine vorliegen).
     func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime]
+
+    /// Genres offered by the site (language pseudo-genres excluded). May be empty.
+    func genres() async throws -> [GenreRef]
+
+    /// All series of a genre (`GenreRef.slug`); follows the site's pagination.
+    func series(inGenre slug: String) async throws -> [SeriesSummary]
+
+    /// The complete A–Z series list.
+    func allSeries() async throws -> [SeriesSummary]
+
+    /// Upcoming releases grouped by day (anime calendar).
+    func releaseCalendar() async throws -> [CalendarDay]
+}
+
+public extension AniworldService {
+    func genres() async throws -> [GenreRef] { [] }
+    func series(inGenre slug: String) async throws -> [SeriesSummary] { [] }
+    func allSeries() async throws -> [SeriesSummary] { [] }
+    func releaseCalendar() async throws -> [CalendarDay] { [] }
 }
 
 public extension AniworldService {

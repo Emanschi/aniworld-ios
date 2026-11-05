@@ -9,25 +9,105 @@ final class SearchViewModel {
     var phase: LoadPhase = .loaded
     private(set) var lastQuery = ""
 
+    /// Genres of the site (loaded once per session).
+    var genres: [GenreRef] = []
+    /// Slugs of the genres currently used as filter, in selection order.
+    var selectedGenres: [String] = []
+
+    private var genresLoaded = false
+    private var genreCache: [String: [SeriesSummary]] = [:]
+
+    var hasGenreFilter: Bool { !selectedGenres.isEmpty }
+
+    /// Changes whenever the search has to be re-run.
+    func key(for query: String) -> String {
+        query + "\u{1F}" + selectedGenres.joined(separator: ",")
+    }
+
+    func loadGenres(service: AniworldService) async {
+        if genresLoaded { return }
+        do {
+            let result = try await service.genres()
+            if Task.isCancelled { return }
+            genres = result
+            genresLoaded = true
+        } catch {
+            // Genre chips are optional; text search keeps working without them.
+        }
+    }
+
+    func toggle(_ genre: GenreRef) {
+        if let index = selectedGenres.firstIndex(of: genre.slug) {
+            selectedGenres.remove(at: index)
+        } else {
+            selectedGenres.append(genre.slug)
+        }
+    }
+
+    func clearGenres() { selectedGenres = [] }
+
     func search(_ query: String, service: AniworldService) async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         lastQuery = trimmed
-        if trimmed.isEmpty {
-            results = []
-            phase = .loaded
+        if selectedGenres.isEmpty {
+            if trimmed.isEmpty {
+                results = []
+                phase = .loaded
+                return
+            }
+            phase = .loading
+            do {
+                let found = try await service.search(trimmed)
+                if Task.isCancelled { return }
+                results = found
+                phase = .loaded
+            } catch {
+                if Task.isCancelled { return }
+                results = []
+                phase = .failed(error)
+            }
             return
         }
+        await searchByGenres(selectedGenres, query: trimmed, service: service)
+    }
+
+    private func searchByGenres(_ slugs: [String], query: String, service: AniworldService) async {
         phase = .loading
         do {
-            let found = try await service.search(trimmed)
+            try await fetchMissing(slugs, service: service)
             if Task.isCancelled { return }
-            results = found
+            var intersection: [SeriesSummary] = genreCache[slugs[0]] ?? []
+            for slug in slugs.dropFirst() {
+                let other = Set((genreCache[slug] ?? []).map { $0.slug })
+                intersection = intersection.filter { other.contains($0.slug) }
+            }
+            if !query.isEmpty {
+                intersection = intersection.filter { $0.title.localizedCaseInsensitiveContains(query) }
+            }
+            results = intersection
             phase = .loaded
         } catch {
             if Task.isCancelled { return }
             results = []
             phase = .failed(error)
         }
+    }
+
+    /// Loads the series lists of all genres that are not cached yet, concurrently.
+    private func fetchMissing(_ slugs: [String], service: AniworldService) async throws {
+        let missing = slugs.filter { genreCache[$0] == nil }
+        if missing.isEmpty { return }
+        let loaded: [(String, [SeriesSummary])] = try await withThrowingTaskGroup(
+            of: (String, [SeriesSummary]).self
+        ) { group in
+            for slug in missing {
+                group.addTask { (slug, try await service.series(inGenre: slug)) }
+            }
+            var collected: [(String, [SeriesSummary])] = []
+            for try await item in group { collected.append(item) }
+            return collected
+        }
+        for (slug, list) in loaded { genreCache[slug] = list }
     }
 }
 
@@ -50,10 +130,12 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                content
-                    .padding(.horizontal, Theme.screenPadding)
-                    .padding(.top, 8)
-                    .padding(.bottom, 32)
+                VStack(alignment: .leading, spacing: 18) {
+                    genreFilter
+                    content
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
             .background(AppBackground())
             .navigationTitle("Suche")
@@ -63,7 +145,8 @@ struct SearchView: View {
             .navigationDestination(for: SeriesSummary.self) { series in
                 SeriesDetailView(series: series)
             }
-            .task(id: query) {
+            .task { await vm.loadGenres(service: service) }
+            .task(id: vm.key(for: query)) {
                 // Debounce: a new keystroke cancels this task before the search starts.
                 if !trimmedQuery.isEmpty {
                     do {
@@ -77,27 +160,112 @@ struct SearchView: View {
         }
     }
 
+    // MARK: Genre filter
+
     @ViewBuilder
-    private var content: some View {
-        if trimmedQuery.isEmpty {
-            recentSearchesView
-        } else {
-            switch vm.phase {
-            case .loading:
-                skeletonGrid
-            case .failed(let error):
-                ErrorStateView(error: error) {
-                    Task { await vm.search(query, service: service) }
+    private var genreFilter: some View {
+        if !vm.genres.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Genres")
+                        .font(AppFont.sectionTitle)
+                        .foregroundStyle(.white)
+                    Spacer()
+                    if vm.hasGenreFilter {
+                        Button("Zurücksetzen") { vm.clearGenres() }
+                            .font(.subheadline)
+                            .tint(Theme.accent)
+                    }
                 }
-            case .loaded:
-                if vm.results.isEmpty {
-                    ContentUnavailableView.search(text: trimmedQuery)
-                        .padding(.top, 40)
-                } else {
-                    resultsGrid
+                .padding(.horizontal, Theme.screenPadding)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(vm.genres) { genre in
+                            let selected = vm.selectedGenres.contains(genre.slug)
+                            Button {
+                                vm.toggle(genre)
+                            } label: {
+                                Text(genre.name)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .chipBackground(selected: selected)
+                            }
+                            .buttonStyle(PressableStyle())
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                        }
+                    }
+                    .padding(.horizontal, Theme.screenPadding)
                 }
             }
         }
+    }
+
+    // MARK: Content
+
+    @ViewBuilder
+    private var content: some View {
+        Group {
+            if trimmedQuery.isEmpty && !vm.hasGenreFilter {
+                VStack(alignment: .leading, spacing: 18) {
+                    browseAllRow
+                    recentSearchesView
+                }
+            } else {
+                switch vm.phase {
+                case .loading:
+                    skeletonGrid
+                case .failed(let error):
+                    ErrorStateView(error: error) {
+                        Task { await vm.search(query, service: service) }
+                    }
+                case .loaded:
+                    if vm.results.isEmpty {
+                        if trimmedQuery.isEmpty {
+                            ContentUnavailableView(
+                                "Keine Treffer",
+                                systemImage: "line.3.horizontal.decrease.circle",
+                                description: Text("Zu dieser Genre-Auswahl wurden keine Serien gefunden.")
+                            )
+                            .padding(.top, 40)
+                        } else {
+                            ContentUnavailableView.search(text: trimmedQuery)
+                                .padding(.top, 40)
+                        }
+                    } else {
+                        resultsGrid
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Theme.screenPadding)
+    }
+
+    private var browseAllRow: some View {
+        NavigationLink(destination: AllSeriesView()) {
+            HStack(spacing: 14) {
+                Image(systemName: "textformat.abc")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Theme.accentGradient)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Theme.surfaceHigh))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Alle Animes A–Z")
+                        .font(.system(.headline, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Der komplette Katalog nach Anfangsbuchstaben")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.surface))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle())
     }
 
     private var resultsGrid: some View {
@@ -129,9 +297,9 @@ struct SearchView: View {
             ContentUnavailableView(
                 "Serien entdecken",
                 systemImage: "magnifyingglass",
-                description: Text("Suche nach Titel – zum Beispiel „Naruto“ oder „Attack on Titan“.")
+                description: Text("Suche nach Titel oder wähle oben ein Genre – zum Beispiel „Naruto“ oder „Attack on Titan“.")
             )
-            .padding(.top, 60)
+            .padding(.top, 30)
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {

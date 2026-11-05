@@ -65,9 +65,14 @@ public struct SeriesDetail: Hashable, Codable, Sendable {
     public var startYear: Int?
     public var endYear: Int?
     public var seasons: [SeasonRef]
+    /// FSK age rating in years (0, 6, 12, 16, 18), nil when the page shows none.
+    public var ageRating: Int?
+    /// Genres with their site slugs (language pseudo-genres excluded).
+    public var genreRefs: [GenreRef]
 
     public init(summary: SeriesSummary, description: String, coverURL: URL?, backdropURL: URL? = nil,
-                genres: [String] = [], startYear: Int? = nil, endYear: Int? = nil, seasons: [SeasonRef]) {
+                genres: [String] = [], startYear: Int? = nil, endYear: Int? = nil, seasons: [SeasonRef],
+                ageRating: Int? = nil, genreRefs: [GenreRef] = []) {
         self.summary = summary
         self.description = description
         self.coverURL = coverURL
@@ -76,6 +81,65 @@ public struct SeriesDetail: Hashable, Codable, Sendable {
         self.startYear = startYear
         self.endYear = endYear
         self.seasons = seasons
+        self.ageRating = ageRating
+        self.genreRefs = genreRefs
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case summary, description, coverURL, backdropURL, genres, startYear, endYear, seasons, ageRating, genreRefs
+    }
+
+    /// Tolerant decoding so JSON stored by older versions (without the newer keys) still loads.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.summary = try c.decode(SeriesSummary.self, forKey: .summary)
+        self.description = try c.decode(String.self, forKey: .description)
+        self.coverURL = try c.decodeIfPresent(URL.self, forKey: .coverURL)
+        self.backdropURL = try c.decodeIfPresent(URL.self, forKey: .backdropURL)
+        self.genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
+        self.startYear = try c.decodeIfPresent(Int.self, forKey: .startYear)
+        self.endYear = try c.decodeIfPresent(Int.self, forKey: .endYear)
+        self.seasons = try c.decodeIfPresent([SeasonRef].self, forKey: .seasons) ?? []
+        self.ageRating = try c.decodeIfPresent(Int.self, forKey: .ageRating)
+        self.genreRefs = try c.decodeIfPresent([GenreRef].self, forKey: .genreRefs) ?? []
+    }
+}
+
+/// A genre as listed on the site (`/genre/<slug>`).
+public struct GenreRef: Identifiable, Hashable, Codable, Sendable {
+    public var slug: String
+    public var name: String
+    public var id: String { slug }
+
+    public init(slug: String, name: String) {
+        self.slug = slug
+        self.name = name
+    }
+}
+
+/// One release entry of the anime calendar.
+public struct CalendarEntry: Identifiable, Hashable, Sendable {
+    public var id: String
+    public var series: SeriesSummary
+    /// Short info line, e.g. "S02E05 · 18:00" (may be empty).
+    public var info: String
+
+    public init(id: String, series: SeriesSummary, info: String) {
+        self.id = id
+        self.series = series
+        self.info = info
+    }
+}
+
+/// One day of the anime calendar.
+public struct CalendarDay: Identifiable, Hashable, Sendable {
+    public var title: String
+    public var entries: [CalendarEntry]
+    public var id: String { title }
+
+    public init(title: String, entries: [CalendarEntry]) {
+        self.title = title
+        self.entries = entries
     }
 }
 

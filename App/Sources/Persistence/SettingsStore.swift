@@ -56,7 +56,7 @@ final class SettingsStore {
     var notifyAppUpdates: Bool = true {
         didSet { defaults.set(notifyAppUpdates, forKey: Keys.notifyAppUpdates) }
     }
-    /// Automatische Komprimierung heruntergeladener Folgen (HEVC / Hardware-Transcoding).
+    /// Komprimierung heruntergeladener MP4-Folgen (Neukodierung auf dem Gerät).
     var compressDownloads: Bool = true {
         didSet { defaults.set(compressDownloads, forKey: Keys.compressDownloads) }
     }
@@ -70,7 +70,10 @@ final class SettingsStore {
     }
     /// Downloads nur im WLAN durchführen, um mobiles Datenvolumen zu schonen.
     var downloadOnlyOnWiFi: Bool = true {
-        didSet { defaults.set(downloadOnlyOnWiFi, forKey: Keys.downloadOnlyOnWiFi) }
+        didSet {
+            defaults.set(downloadOnlyOnWiFi, forKey: Keys.downloadOnlyOnWiFi)
+            NotificationCenter.default.post(name: .downloadNetworkPolicyChanged, object: nil)
+        }
     }
 
     var streamPreferences: StreamPreferences {
@@ -161,4 +164,9 @@ final class SettingsStore {
         }
         return result
     }
+}
+
+extension Notification.Name {
+    /// Posted when "Nur im WLAN herunterladen" changes, so running downloads can react immediately.
+    static let downloadNetworkPolicyChanged = Notification.Name("aniworld.downloadNetworkPolicyChanged")
 }

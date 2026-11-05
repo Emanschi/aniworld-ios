@@ -46,6 +46,34 @@ struct SeriesDetailView: View {
             }
             Button("Abbrechen", role: .cancel) {}
         }
+        .confirmationDialog(
+            isFilmsSelected
+                ? "Alle heruntergeladenen Filme dieser Serie löschen?"
+                : "Alle Downloads dieser Staffel löschen?",
+            isPresented: $confirmDeleteSeason,
+            titleVisibility: .visible
+        ) {
+            Button(isFilmsSelected ? "Filme löschen" : "Staffel löschen", role: .destructive) {
+                if let season = vm.selectedSeason {
+                    downloads.deleteSeason(seriesSlug: displaySummary.slug, season: season)
+                    Haptics.success()
+                }
+            }
+            Button("Abbrechen", role: .cancel) {}
+        }
+        .confirmationDialog(
+            downloadPromptTitle,
+            isPresented: downloadPromptBinding,
+            titleVisibility: .visible,
+            presenting: downloadPrompt
+        ) { episode in
+            if downloads.state(for: episode.id) == .downloaded {
+                Button("Download löschen", role: .destructive) { downloads.delete(episode.id) }
+            } else {
+                Button("Download abbrechen", role: .destructive) { downloads.cancel(episode.id) }
+            }
+            Button("Zurück", role: .cancel) {}
+        }
         .task(id: series.slug) {
             await vm.load(series: series, preferredSeason: lastWatched?.episode.season, service: service)
         }
@@ -92,6 +120,9 @@ struct SeriesDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(Theme.textSecondary)
                 }
+                if let age = vm.detail?.ageRating {
+                    FSKBadge(age: age)
+                }
             }
             Spacer(minLength: 0)
         }
@@ -121,24 +152,49 @@ struct SeriesDetailView: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let genres = vm.detail?.genres, !genres.isEmpty {
-                FlowLayout(spacing: 8) {
-                    ForEach(genres, id: \.self) { genre in
-                        Text(genre)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color.white.opacity(0.10)))
-                    }
-                }
-            }
+            genreChips
             HStack(spacing: 12) {
                 primaryButton
                 favoriteButton
             }
         }
         .padding(.horizontal, Theme.screenPadding)
+    }
+
+    @ViewBuilder
+    private var genreChips: some View {
+        if let refs = vm.detail?.genreRefs, !refs.isEmpty {
+            FlowLayout(spacing: 8) {
+                ForEach(refs) { genre in
+                    NavigationLink(destination: GenreSeriesView(genre: genre)) {
+                        genreChipLabel(genre.name, tappable: true)
+                    }
+                    .buttonStyle(PressableStyle())
+                }
+            }
+        } else if let genres = vm.detail?.genres, !genres.isEmpty {
+            FlowLayout(spacing: 8) {
+                ForEach(genres, id: \.self) { genre in
+                    genreChipLabel(genre, tappable: false)
+                }
+            }
+        }
+    }
+
+    private func genreChipLabel(_ name: String, tappable: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text(name)
+            if tappable {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .opacity(0.6)
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.white.opacity(0.85))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color.white.opacity(0.10)))
     }
 
     private var primaryButton: some View {
@@ -289,7 +345,7 @@ struct SeriesDetailView: View {
                         Button(role: .destructive) {
                             confirmDeleteSeason = true
                         } label: {
-                            Label(vm.selectedSeason == 0 ? "Filme löschen" : "Staffel löschen",
+                            Label(isFilmsSelected ? "Filme löschen" : "Staffel löschen",
                                   systemImage: "trash")
                                 .font(.subheadline.weight(.semibold))
                         }
@@ -301,7 +357,7 @@ struct SeriesDetailView: View {
                                            language: languageBinding.wrappedValue)
                         Haptics.impact()
                     } label: {
-                        Label(vm.selectedSeason == 0 ? "Alle Filme laden" : "Ganze Staffel laden",
+                        Label(isFilmsSelected ? "Alle Filme laden" : "Ganze Staffel laden",
                               systemImage: "arrow.down.circle")
                             .font(.subheadline.weight(.semibold))
                     }
@@ -322,35 +378,17 @@ struct SeriesDetailView: View {
                 }
             }
             .padding(.horizontal, Theme.screenPadding)
-            .confirmationDialog(
-                (vm.selectedSeason ?? 1) == 0 ? "Alle heruntergeladenen Filme dieser Serie löschen?" : "Alle Downloads von Staffel \(vm.selectedSeason ?? 1) löschen?",
-                isPresented: $confirmDeleteSeason,
-                titleVisibility: .visible
-            ) {
-                Button((vm.selectedSeason ?? 1) == 0 ? "Filme löschen" : "Staffel löschen", role: .destructive) {
-                    if let season = vm.selectedSeason {
-                        downloads.deleteSeason(seriesSlug: displaySummary.slug, season: season)
-                        Haptics.success()
-                    }
-                }
-                Button("Abbrechen", role: .cancel) {}
-            }
-            .confirmationDialog(
-                downloadPromptTitle,
-                isPresented: Binding<Bool>(
-                    get: { downloadPrompt != nil },
-                    set: { if !$0 { downloadPrompt = nil } }),
-                titleVisibility: .visible,
-                presenting: downloadPrompt
-            ) { episode in
-                if downloads.state(for: episode.id) == .downloaded {
-                    Button("Download löschen", role: .destructive) { downloads.delete(episode.id) }
-                } else {
-                    Button("Download abbrechen", role: .destructive) { downloads.cancel(episode.id) }
-                }
-                Button("Zurück", role: .cancel) {}
-            }
         }
+    }
+
+    /// The films pseudo-season is number 0.
+    private var isFilmsSelected: Bool { vm.selectedSeason == 0 }
+
+    private var downloadPromptBinding: Binding<Bool> {
+        Binding<Bool>(
+            get: { downloadPrompt != nil },
+            set: { if !$0 { downloadPrompt = nil } }
+        )
     }
 
     @ViewBuilder
@@ -401,29 +439,26 @@ struct SeriesDetailView: View {
 
     @ToolbarContentBuilder
     private var languageMenu: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            HStack(spacing: 12) {
-                if downloads.hasDownloads(seriesSlug: displaySummary.slug) {
-                    Menu {
-                        Button(role: .destructive) {
-                            confirmDeleteSeries = true
-                        } label: {
-                            Label("Alle Downloads dieser Serie löschen", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if downloads.hasDownloads(seriesSlug: displaySummary.slug) {
                 Menu {
-                    Picker("Sprache", selection: languageBinding) {
-                        ForEach(StreamLanguage.allCases, id: \.self) { language in
-                            Text(language.displayName).tag(language)
-                        }
+                    Button(role: .destructive) {
+                        confirmDeleteSeries = true
+                    } label: {
+                        Label("Alle Downloads dieser Serie löschen", systemImage: "trash")
                     }
                 } label: {
-                    Image(systemName: "globe")
+                    Image(systemName: "ellipsis.circle")
                 }
+            }
+            Menu {
+                Picker("Sprache", selection: languageBinding) {
+                    ForEach(StreamLanguage.allCases, id: \.self) { language in
+                        Text(language.displayName).tag(language)
+                    }
+                }
+            } label: {
+                Image(systemName: "globe")
             }
         }
     }

@@ -83,26 +83,34 @@ final class DownloadNetworkWatcher: @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "DownloadNetworkWatcher")
     private let lock = NSLock()
-    private var _isConnectedToWiFi = true
-    var onPathChange: (@Sendable () -> Void)?
+    /// nil until the first path update arrived (we must not claim Wi-Fi before we know).
+    private var _wifi: Bool?
+    private var _onPathChange: (@Sendable () -> Void)?
 
+    /// Called on the monitor queue whenever the Wi-Fi state changes. Access is synchronized.
+    var onPathChange: (@Sendable () -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _onPathChange }
+        set { lock.lock(); _onPathChange = newValue; lock.unlock() }
+    }
+
+    /// True only when a first path update was received and it is a usable Wi-Fi / Ethernet connection.
     var isConnectedToWiFi: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return _isConnectedToWiFi
+        return _wifi == true
     }
 
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            let onWiFi = path.usesInterfaceType(.wifi)
+            let onWiFi = path.status == .satisfied
+                && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
             self.lock.lock()
-            let changed = self._isConnectedToWiFi != onWiFi
-            self._isConnectedToWiFi = onWiFi
+            let changed = self._wifi != onWiFi
+            self._wifi = onWiFi
+            let callback = self._onPathChange
             self.lock.unlock()
-            if changed {
-                self.onPathChange?()
-            }
+            if changed { callback?() }
         }
         monitor.start(queue: queue)
     }
@@ -156,6 +164,12 @@ final class DownloadSessionDelegate: NSObject, AVAssetDownloadDelegate, URLSessi
         let fm = FileManager.default
         let destination = DownloadPaths.directory.appendingPathComponent(DownloadPaths.safeName(id) + ".mp4")
         let m = manager
+        // An error page (404, 403 ...) is also "downloaded" successfully by URLSession; reject it.
+        if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let message = "Serverfehler (\(http.statusCode))"
+            Task { @MainActor in m?.failed(id: id, message: message) }
+            return
+        }
         do {
             if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
             try fm.moveItem(at: location, to: destination)
@@ -182,6 +196,11 @@ final class DownloadSessionDelegate: NSObject, AVAssetDownloadDelegate, URLSessi
             handler?()
         }
     }
+}
+
+/// Holds a `UIBackgroundTaskIdentifier` so expiration handlers and tasks can share it.
+final class BackgroundTaskBox: @unchecked Sendable {
+    var id: UIBackgroundTaskIdentifier = .invalid
 }
 
 /// Needed so iOS can hand over background-session events after the app was relaunched.
@@ -215,7 +234,16 @@ final class DownloadManager {
     @ObservationIgnored private var hlsSession: AVAssetDownloadURLSession?
     @ObservationIgnored private var fileSession: URLSession?
     @ObservationIgnored private var resolveTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var compressTasks: [String: Task<Void, Never>] = [:]
+    /// Jobs whose transfer was started with `allowsCellularAccess = false` (safe when Wi-Fi drops).
+    @ObservationIgnored private var wifiOnlyTasks: Set<String> = []
+    /// Jobs whose old session tasks are still being cancelled; they must not be restarted yet.
+    @ObservationIgnored private var cancelling: Set<String> = []
     @ObservationIgnored private var restored = false
+    @ObservationIgnored private var policyObserver: NSObjectProtocol?
+
+    /// Observable copy of the Wi-Fi state (the watcher itself is not observable).
+    private(set) var wifiConnected = false
 
     init(service: AniworldService, settings: SettingsStore) {
         self.service = service
@@ -223,20 +251,28 @@ final class DownloadManager {
         loadIndex()
         sessionDelegate.manager = self
 
+        // Cellular access is decided per request / asset (see `begin`), so toggling the setting
+        // takes effect immediately; the sessions themselves always allow it.
         let hlsConfig = URLSessionConfiguration.background(withIdentifier: Self.hlsSessionID)
         hlsConfig.sessionSendsLaunchEvents = true
         hlsConfig.isDiscretionary = false
-        hlsConfig.allowsCellularAccess = !settings.downloadOnlyOnWiFi
         hlsSession = AVAssetDownloadURLSession(
             configuration: hlsConfig, assetDownloadDelegate: sessionDelegate, delegateQueue: OperationQueue.main)
 
         let fileConfig = URLSessionConfiguration.background(withIdentifier: Self.fileSessionID)
         fileConfig.sessionSendsLaunchEvents = true
         fileConfig.isDiscretionary = false
-        fileConfig.allowsCellularAccess = !settings.downloadOnlyOnWiFi
         fileSession = URLSession(configuration: fileConfig, delegate: sessionDelegate, delegateQueue: OperationQueue.main)
 
         DownloadNetworkWatcher.shared.onPathChange = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.networkChanged()
+            }
+        }
+        wifiConnected = DownloadNetworkWatcher.shared.isConnectedToWiFi
+        policyObserver = NotificationCenter.default.addObserver(
+            forName: .downloadNetworkPolicyChanged, object: nil, queue: .main
+        ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.networkChanged()
             }
@@ -248,7 +284,7 @@ final class DownloadManager {
     // MARK: Queries
 
     var isWaitingForWiFi: Bool {
-        settings.downloadOnlyOnWiFi && !DownloadNetworkWatcher.shared.isConnectedToWiFi
+        settings.downloadOnlyOnWiFi && !wifiConnected
     }
 
     var totalBytes: Int64 { records.reduce(Int64(0)) { $0 + $1.sizeBytes } }
@@ -317,6 +353,9 @@ final class DownloadManager {
     func cancel(_ id: String) {
         resolveTasks[id]?.cancel()
         resolveTasks[id] = nil
+        compressTasks[id]?.cancel()
+        compressTasks[id] = nil
+        wifiOnlyTasks.remove(id)
         jobs[id] = nil
         cancelSessionTasks(id: id)
         saveIndex()
@@ -365,17 +404,42 @@ final class DownloadManager {
 
     // MARK: Queue
 
+    /// Called when the network path or the "only Wi-Fi" setting changed.
     private func networkChanged() {
-        if !isWaitingForWiFi {
-            pump()
+        wifiConnected = DownloadNetworkWatcher.shared.isConnectedToWiFi
+        enforceNetworkPolicy()
+        pump()
+    }
+
+    /// With "only Wi-Fi" on and no Wi-Fi: stop transfers that could use cellular data and requeue them.
+    /// Plain file downloads started with a Wi-Fi-only request pause on their own and stay untouched.
+    private func enforceNetworkPolicy() {
+        guard isWaitingForWiFi else { return }
+        for job in jobs.values where job.status == .active && job.isCompressing != true
+            && !wifiOnlyTasks.contains(job.id) {
+            requeue(job.id)
         }
+    }
+
+    private func requeue(_ id: String) {
+        guard var job = jobs[id] else { return }
+        resolveTasks[id]?.cancel()
+        resolveTasks[id] = nil
+        wifiOnlyTasks.remove(id)
+        job.status = .queued
+        job.progress = 0
+        job.currentHoster = nil
+        jobs[id] = job
+        cancelSessionTasks(id: id)
+        saveIndex()
     }
 
     private func pump() {
         guard restored else { return }
         if isWaitingForWiFi { return }
         var running = jobs.values.filter { $0.status == .active }.count
-        let queued = jobs.values.filter { $0.status == .queued }.sorted { $0.addedAt < $1.addedAt }
+        let queued = jobs.values.filter { $0.status == .queued && !cancelling.contains($0.id) }
+            .sorted { $0.addedAt < $1.addedAt }
         for job in queued {
             if running >= Self.maxConcurrent { break }
             start(job.id)
@@ -435,6 +499,9 @@ final class DownloadManager {
             for (key, value) in stream.headers {
                 request.setValue(value, forHTTPHeaderField: key)
             }
+            let wifiOnly = settings.downloadOnlyOnWiFi
+            request.allowsCellularAccess = !wifiOnly
+            if wifiOnly { wifiOnlyTasks.insert(id) } else { wifiOnlyTasks.remove(id) }
             guard let session = fileSession else {
                 markFailed(id: id, message: "Download-Sitzung nicht verfügbar")
                 return
@@ -443,7 +510,11 @@ final class DownloadManager {
             task.taskDescription = id
             task.resume()
         } else {
-            let asset = AVURLAsset(url: stream.url, options: ["AVURLAssetHTTPHeaderFieldsKey": stream.headers])
+            wifiOnlyTasks.remove(id)
+            let asset = AVURLAsset(url: stream.url, options: [
+                "AVURLAssetHTTPHeaderFieldsKey": stream.headers,
+                AVURLAssetAllowsCellularAccessKey: !settings.downloadOnlyOnWiFi
+            ])
             guard let session = hlsSession,
                   let task = session.makeAssetDownloadTask(
                     asset: asset, assetTitle: title, assetArtworkData: nil, options: nil) else {
@@ -456,13 +527,17 @@ final class DownloadManager {
     }
 
     private func cancelSessionTasks(id: String) {
-        Task {
+        cancelling.insert(id)
+        Task { [weak self] in
+            guard let self else { return }
             var all: [URLSessionTask] = []
-            if let hlsSession { all.append(contentsOf: await hlsSession.allTasks) }
-            if let fileSession { all.append(contentsOf: await fileSession.allTasks) }
+            if let hlsSession = self.hlsSession { all.append(contentsOf: await hlsSession.allTasks) }
+            if let fileSession = self.fileSession { all.append(contentsOf: await fileSession.allTasks) }
             for task in all where task.taskDescription == id {
                 task.cancel()
             }
+            self.cancelling.remove(id)
+            self.pump()
         }
     }
 
@@ -481,10 +556,58 @@ final class DownloadManager {
             return
         }
         resolveTasks[id] = nil
+        wifiOnlyTasks.remove(id)
+
+        // Plain mp4 files can be re-encoded on the device. The job stays visible as "active"
+        // (no record yet), so the original file can never be played while it is being replaced.
+        guard kind == .file, settings.compressDownloads else {
+            completeFinish(id: id, location: location, kind: kind, compressionLabel: nil)
+            return
+        }
+        var compressing = job
+        compressing.progress = 1
+        compressing.isCompressing = true
+        jobs[id] = compressing
+        saveIndex()
+
+        let quality = settings.downloadQuality
+        let background = BackgroundTaskBox()
+        background.id = UIApplication.shared.beginBackgroundTask(withName: "DownloadCompression") { [weak self] in
+            // Out of background time: abort the export, the original file is kept.
+            MainActor.assumeIsolated {
+                self?.compressTasks[id]?.cancel()
+                UIApplication.shared.endBackgroundTask(background.id)
+                background.id = .invalid
+            }
+        }
+        compressTasks[id] = Task { [weak self] in
+            let result = await Self.compress(source: location, quality: quality)
+            guard let self else { return }
+            if background.id != .invalid {
+                UIApplication.shared.endBackgroundTask(background.id)
+                background.id = .invalid
+            }
+            self.compressTasks[id] = nil
+            guard self.jobs[id] != nil else {
+                // Cancelled by the user while compressing: drop the data.
+                try? FileManager.default.removeItem(at: location)
+                return
+            }
+            self.completeFinish(id: id, location: location, kind: kind, compressionLabel: result)
+        }
+    }
+
+    /// Turns the finished transfer into a visible, playable record.
+    private func completeFinish(id: String, location: URL, kind: DownloadKind, compressionLabel: String?) {
+        guard let job = jobs[id] else {
+            try? FileManager.default.removeItem(at: location)
+            return
+        }
         let record = DownloadRecord(
             id: id, series: job.series, episode: job.episode, language: job.language,
             hoster: job.currentHoster ?? "", relativePath: DownloadPaths.relativePath(for: location),
-            kind: kind, sizeBytes: 0, createdAt: Date(), isCompressed: false)
+            kind: kind, sizeBytes: 0, createdAt: Date(), isCompressed: compressionLabel != nil,
+            compressionLabel: compressionLabel)
         records.removeAll { $0.id == id }
         records.append(record)
         jobs[id] = nil
@@ -492,77 +615,64 @@ final class DownloadManager {
         pump()
 
         Task { [weak self] in
-            guard let self else { return }
-            var finalLocation = location
-            var wasCompressed = false
-
-            // Compress MP4 files using hardware encoder if compression is enabled
-            if kind == .file && self.settings.compressDownloads {
-                if let compressed = await self.compressVideoFile(at: location) {
-                    finalLocation = compressed
-                    wasCompressed = true
-                }
-            }
-
-            let size = await Task.detached(priority: .utility) { DownloadPaths.diskSize(of: finalLocation) }.value
-            self.finalizeRecord(id: id, location: finalLocation, size: size, isCompressed: wasCompressed)
+            let size = await Task.detached(priority: .utility) { DownloadPaths.diskSize(of: location) }.value
+            self?.setSize(size, id: id)
         }
     }
 
-    private func finalizeRecord(id: String, location: URL, size: Int64, isCompressed: Bool) {
-        guard let index = records.firstIndex(where: { $0.id == id }) else { return }
-        records[index].sizeBytes = size
-        records[index].relativePath = DownloadPaths.relativePath(for: location)
-        records[index].isCompressed = isCompressed
-        saveIndex()
-    }
-
-    /// Compresses a video file to a high-efficiency format (HEVC / 720p) to reduce disk space by 50-75%.
-    private func compressVideoFile(at source: URL) async -> URL? {
+    /// Re-encodes `source` in place. Returns a short label ("HEVC", "720p") when the file was replaced by a
+    /// smaller one, or nil when the original was kept (unsupported, failed, cancelled or not smaller).
+    nonisolated private static func compress(source: URL, quality: DownloadQuality) async -> String? {
+        let fm = FileManager.default
         let destination = source.deletingPathExtension().appendingPathExtension("compressed.mp4")
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try? FileManager.default.removeItem(at: destination)
+        try? fm.removeItem(at: destination)
+
+        // HEVC presets keep the resolution (there is no 720p HEVC preset); the smaller sizes use H.264.
+        let candidates: [String]
+        switch quality {
+        case .high:
+            candidates = [AVAssetExportPresetHEVCHighestQuality, AVAssetExportPresetHEVC1920x1080,
+                          AVAssetExportPreset1920x1080]
+        case .medium:
+            candidates = [AVAssetExportPreset1280x720, AVAssetExportPresetMediumQuality]
+        case .low:
+            candidates = [AVAssetExportPreset640x480, AVAssetExportPresetLowQuality]
         }
         let asset = AVURLAsset(url: source)
-        let preferredPreset: String
-        let fallbackPreset: String
-        switch settings.downloadQuality {
-        case .low:
-            preferredPreset = AVAssetExportPreset640x480
-            fallbackPreset = AVAssetExportPresetLowQuality
-        case .medium:
-            preferredPreset = AVAssetExportPreset1280x720
-            fallbackPreset = AVAssetExportPresetMediumQuality
-        case .high:
-            preferredPreset = AVAssetExportPresetHEVC1920x1080
-            fallbackPreset = AVAssetExportPreset1920x1080
-        }
-        let supportedPresets = AVAssetExportSession.exportPresets(compatibleWith: asset)
-        let preset: String
-        if supportedPresets.contains(preferredPreset) {
-            preset = preferredPreset
-        } else if supportedPresets.contains(fallbackPreset) {
-            preset = fallbackPreset
-        } else if supportedPresets.contains(AVAssetExportPresetMediumQuality) {
-            preset = AVAssetExportPresetMediumQuality
-        } else {
-            return nil
-        }
-
-        guard let session = AVAssetExportSession(asset: asset, presetName: preset) else { return nil }
+        let supported = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        guard let preset = candidates.first(where: { supported.contains($0) }),
+              let session = AVAssetExportSession(asset: asset, presetName: preset) else { return nil }
         session.outputURL = destination
         session.outputFileType = .mp4
-        session.shouldOptimizeForNetworkUse = true
-        await session.export()
-        if session.status == .completed && FileManager.default.fileExists(atPath: destination.path) {
-            let fm = FileManager.default
-            try? fm.removeItem(at: source)
-            try? fm.moveItem(at: destination, to: source)
-            DownloadPaths.excludeFromBackup(source)
-            return source
+
+        await withTaskCancellationHandler {
+            await session.export()
+        } onCancel: {
+            session.cancelExport()
         }
-        try? FileManager.default.removeItem(at: destination)
-        return nil
+
+        guard session.status == .completed, fm.fileExists(atPath: destination.path) else {
+            try? fm.removeItem(at: destination)
+            return nil
+        }
+        // Only keep the result when it really saves space.
+        guard DownloadPaths.diskSize(of: destination) < DownloadPaths.diskSize(of: source) else {
+            try? fm.removeItem(at: destination)
+            return nil
+        }
+        do {
+            _ = try fm.replaceItemAt(source, withItemAt: destination)
+        } catch {
+            try? fm.removeItem(at: destination)
+            return nil
+        }
+        DownloadPaths.excludeFromBackup(source)
+        if preset.contains("HEVC") { return "HEVC" }
+        switch quality {
+        case .high: return "1080p"
+        case .medium: return "720p"
+        case .low: return "480p"
+        }
     }
 
     private func setSize(_ size: Int64, id: String) {
@@ -573,8 +683,10 @@ final class DownloadManager {
 
     /// Transfer failed: try the next hoster, or give up after a few attempts.
     func failed(id: String, message: String) {
-        guard var job = jobs[id], job.status == .active else { return }
+        // A job that is already compressing has a complete file; stale transfer errors must not touch it.
+        guard var job = jobs[id], job.status == .active, job.isCompressing != true else { return }
         resolveTasks[id] = nil
+        wifiOnlyTasks.remove(id)
         if let hoster = job.currentHoster, !job.triedHosters.contains(hoster) {
             job.triedHosters.append(hoster)
         }
@@ -619,8 +731,10 @@ final class DownloadManager {
         }
         for id in Array(jobs.keys) {
             guard var job = jobs[id], job.status == .active, !running.contains(id) else { continue }
+            // Also covers jobs that were compressing when the app died: they are simply downloaded again.
             job.status = .queued
             job.progress = 0
+            job.isCompressing = nil
             jobs[id] = job
         }
         restored = true

@@ -17,6 +17,8 @@ struct PlayerScreen: View {
 
     @State private var viewModel: PlayerViewModel?
     @State private var originalBrightness: CGFloat?
+    /// Brightness chosen in the player, re-applied when the app becomes active again.
+    @State private var playerBrightness: CGFloat?
 
     var body: some View {
         ZStack {
@@ -53,6 +55,18 @@ struct PlayerScreen: View {
             if phase != .active {
                 viewModel?.saveProgress()
                 library.flush()
+                // Screen brightness is a system-wide setting: give it back while we are not in front
+                // (also covers Picture in Picture and the app switcher).
+                if let orig = originalBrightness {
+                    let current = UIScreen.main.brightness
+                    if abs(current - orig) > 0.001 {
+                        playerBrightness = current
+                        UIScreen.main.brightness = orig
+                    }
+                }
+            } else if let custom = playerBrightness {
+                UIScreen.main.brightness = custom
+                playerBrightness = nil
             }
         }
     }
@@ -355,7 +369,6 @@ private struct PlayerContentView: View {
         } else {
             let target = min(max(baseVolume + deltaFraction, 0), 1)
             VolumeController.shared.setVolume(Float(target))
-            vm.player.volume = Float(target)
             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                 hudState = PlayerHUDState(kind: .volume, value: target)
             }
