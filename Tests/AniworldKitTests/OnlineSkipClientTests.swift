@@ -53,6 +53,52 @@ final class OnlineSkipClientTests: XCTestCase {
         XCTAssertEqual(http.requested.count, 2, "MAL id and skip times are cached")
     }
 
+    /// Real AniSkip answer for Attack on Titan S2E1 vs. the aniworld stream (1450.133 s).
+    func testAlignmentToStreamLength() {
+        func t(_ type: SkipType, _ s: Double, _ e: Double, _ len: Double) -> SkipTime {
+            SkipTime(skipId: type.rawValue, skipType: type, interval: SkipInterval(startTime: s, endTime: e), episodeLength: len)
+        }
+        let aniSkip = [
+            t(.mixedOp, 0.5, 17.083, 1467.08),   // other version: dropped
+            t(.recap, 18.248, 108.248, 1467.08), // other version: dropped
+            t(.op, 167.705, 257.705, 1450.226),  // same version: kept as is
+            t(.ed, 1430.034, 1461.0, 1461.971),  // 11.8 s longer version: shifted with the end
+        ]
+        let aligned = SkipTimeAlignment.align(aniSkip, toDuration: 1450.133)
+        XCTAssertEqual(aligned.map(\.skipType), [.op, .ed])
+        XCTAssertEqual(aligned[0].interval.startTime, 167.705)
+        XCTAssertEqual(aligned[1].interval.startTime, 1430.034 - 11.838, accuracy: 0.01)
+        XCTAssertLessThanOrEqual(aligned[1].interval.endTime, 1450.133)
+
+        // Unknown duration or unknown episode length: untouched.
+        XCTAssertEqual(SkipTimeAlignment.align(aniSkip, toDuration: 0), aniSkip)
+        let custom = [t(.op, 60, 150, 0)]
+        XCTAssertEqual(SkipTimeAlignment.align(custom, toDuration: 1400), custom)
+        // An outro of a far longer version is dropped instead of guessed.
+        XCTAssertEqual(SkipTimeAlignment.align([t(.ed, 1500, 1590, 1620)], toDuration: 1450), [])
+    }
+
+    /// Fetched once online, the times survive an app restart and work offline (downloads).
+    func testDiskCacheWorksOffline() async {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aniskip-\(UUID().uuidString)/cache.json")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let online = FakeHTTP([
+            aniList: FakeHTTP.ok(#"{"data":{"Media":{"idMal":20}}}"#),
+            aniSkip(20, 3): FakeHTTP.ok(skipJSON),
+        ])
+        let first = await OnlineSkipClient(transport: online, cacheFile: file)
+            .skipTimes(seriesTitle: "Naruto", seriesSlug: "naruto", season: 1, episode: 3)
+        XCTAssertEqual(first.count, 2)
+
+        let offline = FakeHTTP()
+        offline.failAll = true
+        let again = await OnlineSkipClient(transport: offline, cacheFile: file)
+            .skipTimes(seriesTitle: "Naruto", seriesSlug: "naruto", season: 1, episode: 3)
+        XCTAssertEqual(again, first)
+        XCTAssertTrue(offline.requested.isEmpty)
+    }
+
     func testFilmsAndOfflineYieldNothing() async {
         let http = FakeHTTP()
         let client = OnlineSkipClient(transport: http)

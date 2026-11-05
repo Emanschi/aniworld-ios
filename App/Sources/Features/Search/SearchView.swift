@@ -49,6 +49,7 @@ final class SearchViewModel {
     func search(_ query: String, service: AniworldService) async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         lastQuery = trimmed
+        isLoadingMore = false
         if selectedGenres.isEmpty {
             if trimmed.isEmpty {
                 results = []
@@ -71,37 +72,72 @@ final class SearchViewModel {
         await searchByGenres(selectedGenres, query: trimmed, service: service)
     }
 
+    /// True while genre pages are still arriving; results shown so far are partial.
+    private(set) var isLoadingMore = false
+    /// Lists received so far for genres that are still loading.
+    private var partial: [String: [SeriesSummary]] = [:]
+    /// Bumped per search so late progress of an older search is ignored.
+    private var searchToken = 0
+
     private func searchByGenres(_ slugs: [String], query: String, service: AniworldService) async {
+        searchToken += 1
+        let token = searchToken
+        partial = [:]
+        if slugs.allSatisfy({ genreCache[$0] != nil }) {
+            showIntersection(slugs, query: query)
+            return
+        }
         phase = .loading
+        isLoadingMore = true
         do {
-            try await fetchMissing(slugs, service: service)
-            if Task.isCancelled { return }
-            var intersection: [SeriesSummary] = genreCache[slugs[0]] ?? []
-            for slug in slugs.dropFirst() {
-                let other = Set((genreCache[slug] ?? []).map { $0.slug })
-                intersection = intersection.filter { other.contains($0.slug) }
+            try await fetchMissing(slugs, service: service) { [weak self] slug, list in
+                await self?.receivePartial(slug, list, slugs: slugs, query: query, token: token)
             }
-            if !query.isEmpty {
-                intersection = intersection.filter { $0.title.localizedCaseInsensitiveContains(query) }
-            }
-            results = intersection
-            phase = .loaded
+            guard token == searchToken, !Task.isCancelled else { return }
+            isLoadingMore = false
+            showIntersection(slugs, query: query)
         } catch {
-            if Task.isCancelled { return }
+            guard token == searchToken, !Task.isCancelled else { return }
+            isLoadingMore = false
             results = []
             phase = .failed(error)
         }
     }
 
-    /// Loads the series lists of all genres that are not cached yet, concurrently.
-    private func fetchMissing(_ slugs: [String], service: AniworldService) async throws {
+    /// Shows results as soon as every selected genre has at least its first page.
+    private func receivePartial(_ slug: String, _ list: [SeriesSummary], slugs: [String], query: String, token: Int) {
+        guard token == searchToken else { return }
+        partial[slug] = list
+        guard slugs.allSatisfy({ genreCache[$0] != nil || partial[$0] != nil }) else { return }
+        showIntersection(slugs, query: query)
+    }
+
+    private func showIntersection(_ slugs: [String], query: String) {
+        func list(_ slug: String) -> [SeriesSummary] { genreCache[slug] ?? partial[slug] ?? [] }
+        var intersection = list(slugs[0])
+        for slug in slugs.dropFirst() {
+            let other = Set(list(slug).map(\.slug))
+            intersection = intersection.filter { other.contains($0.slug) }
+        }
+        if !query.isEmpty {
+            intersection = intersection.filter { $0.title.localizedCaseInsensitiveContains(query) }
+        }
+        results = intersection
+        phase = .loaded
+    }
+
+    /// Loads the series lists of all genres that are not cached yet, concurrently, reporting progress.
+    private func fetchMissing(_ slugs: [String], service: AniworldService,
+                              onProgress: @escaping @Sendable (String, [SeriesSummary]) async -> Void) async throws {
         let missing = slugs.filter { genreCache[$0] == nil }
         if missing.isEmpty { return }
         let loaded: [(String, [SeriesSummary])] = try await withThrowingTaskGroup(
             of: (String, [SeriesSummary]).self
         ) { group in
             for slug in missing {
-                group.addTask { (slug, try await service.series(inGenre: slug)) }
+                group.addTask {
+                    (slug, try await service.series(inGenre: slug, progress: { await onProgress(slug, $0) }))
+                }
             }
             var collected: [(String, [SeriesSummary])] = []
             for try await item in group { collected.append(item) }
@@ -219,7 +255,10 @@ struct SearchView: View {
                         Task { await vm.search(query, service: service) }
                     }
                 case .loaded:
-                    if vm.results.isEmpty {
+                    if vm.results.isEmpty && vm.isLoadingMore {
+                        // Partial pages have no overlap yet; keep the placeholder until more arrives.
+                        skeletonGrid
+                    } else if vm.results.isEmpty {
                         if trimmedQuery.isEmpty {
                             ContentUnavailableView(
                                 "Keine Treffer",
@@ -269,13 +308,18 @@ struct SearchView: View {
     }
 
     private var resultsGrid: some View {
-        LazyVGrid(columns: columns, spacing: 18) {
-            ForEach(vm.results) { series in
-                NavigationLink(value: series) {
-                    PosterCard(series: series, width: nil)
+        VStack(spacing: 18) {
+            LazyVGrid(columns: columns, spacing: 18) {
+                ForEach(vm.results) { series in
+                    NavigationLink(value: series) {
+                        PosterCard(series: series, width: nil)
+                    }
+                    .buttonStyle(PressableStyle())
+                    .simultaneousGesture(TapGesture().onEnded { rememberSearch(trimmedQuery) })
                 }
-                .buttonStyle(PressableStyle())
-                .simultaneousGesture(TapGesture().onEnded { rememberSearch(trimmedQuery) })
+            }
+            if vm.isLoadingMore {
+                LoadingMoreRow(count: vm.results.count)
             }
         }
     }

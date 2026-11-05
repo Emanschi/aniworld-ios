@@ -69,6 +69,18 @@ final class SeriesDetailViewModel {
         }
     }
 
+    /// Episodes of all regular seasons (films excluded), loading seasons that weren't opened yet.
+    func allRegularEpisodes(slug: String, service: AniworldService) async throws -> [EpisodeRef] {
+        var out: [EpisodeRef] = []
+        for season in seasons where !season.isFilms {
+            if episodesBySeason[season.number] == nil {
+                episodesBySeason[season.number] = try await service.episodes(slug: slug, season: season.number)
+            }
+            out += episodesBySeason[season.number] ?? []
+        }
+        return out
+    }
+
     func selectSeason(_ number: Int, slug: String, service: AniworldService) async {
         selectedSeason = number
         if episodesBySeason[number] != nil {

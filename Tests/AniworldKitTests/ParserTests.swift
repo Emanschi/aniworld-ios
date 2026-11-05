@@ -243,6 +243,20 @@ final class CalendarParserTests: XCTestCase {
         XCTAssertEqual(Set(days.flatMap(\.entries).map(\.id)).count, days.flatMap(\.entries).count)
     }
 
+    func testDayTitles() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Vienna")!
+        let date = try XCTUnwrap(CalendarParser.date(in: "Donnerstag, 05.11.2026 (heute)", calendar: cal))
+        let day = CalendarDay(title: "x", entries: [], date: date)
+        let noon = { (d: Int) in cal.date(from: DateComponents(year: 2026, month: 11, day: d, hour: 12))! }
+        XCTAssertEqual(day.displayTitle(now: noon(5), calendar: cal), "Heute")
+        XCTAssertEqual(day.displayTitle(now: noon(4), calendar: cal), "Morgen")
+        XCTAssertEqual(day.displayTitle(now: noon(6), calendar: cal), "Gestern")
+        XCTAssertEqual(day.displayTitle(now: noon(1), calendar: cal), "Donnerstag, 05.11.")
+        XCTAssertEqual(CalendarDay(title: "roh", entries: []).displayTitle(), "roh")
+        XCTAssertNil(CalendarParser.date(in: "ohne Datum"))
+    }
+
     func testGarbageYieldsEmpty() {
         XCTAssertEqual(CalendarParser.parse(""), [])
         XCTAssertEqual(CalendarParser.parse("<section class=\"calendarList\"><h3>Montag</h3></section>"), [])

@@ -63,6 +63,11 @@ final class HTTPClient: HTTPFetching, @unchecked Sendable {
         self.backoffScale = backoffScale
     }
 
+    /// Same transport and retry behaviour, but its own throttle (e.g. a shorter gap for paged lists).
+    func withThrottle(_ throttle: RequestThrottle) -> HTTPClient {
+        HTTPClient(transport: transport, throttle: throttle, backoffScale: backoffScale)
+    }
+
     func send(_ request: URLRequest) async throws -> HTTPResponse {
         var attempt = 0
         while true {

@@ -138,7 +138,8 @@ final class PlayerViewModel {
         if let stats { recorder = WatchSessionRecorder(store: stats) }
 
         player.defaultRate = playbackRate
-        pip.onActiveChange = { [weak self] active in self?.isPictureInPictureActive = active }
+        pip.onActiveChange = { [weak self] active in self?.pipActiveChanged(active) }
+        pip.onRestoreRequested = { [weak self] in self?.coordinator?.isMinimized = false }
         nowPlaying = NowPlayingController(handlers: .init(
             play: { [weak self] in self?.play() },
             pause: { [weak self] in self?.pause() },
@@ -186,6 +187,22 @@ final class PlayerViewModel {
         // The file is no longer in use: delete it now if it was watched.
         deleteWatchedDownloadIfNeeded(episodeID: episode.id)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Picture in Picture started/stopped. Starting minimizes the full-screen player so the user can
+    /// browse; stopping via "back to app" restores it, stopping via X ends the playback.
+    private func pipActiveChanged(_ active: Bool) {
+        isPictureInPictureActive = active
+        guard !isShutdown, let coordinator else { return }
+        if active {
+            coordinator.isMinimized = true
+        } else if coordinator.isMinimized {
+            if pip.restoreRequested {
+                coordinator.isMinimized = false
+            } else {
+                close()
+            }
+        }
     }
 
     func close() {
@@ -238,7 +255,8 @@ final class PlayerViewModel {
             )
             // AniSkip only when nothing is bundled and the user allows online lookups.
             // Own times still win in `recomputeSkipTimes()`.
-            if times.isEmpty, self.settings?.enableSkipDetection == true, self.settings?.onlineSkipTimes == true {
+            if times.isEmpty, self.settings?.enableSkipDetection == true, self.settings?.onlineSkipTimes == true,
+               self.library?.isOnlineSkipDisabled(seriesSlug: series.slug) != true {
                 times = await service.onlineSkipTimes(
                     seriesTitle: series.title,
                     seriesSlug: series.slug,
@@ -398,7 +416,7 @@ final class PlayerViewModel {
                     _ = await self.player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
                 }
                 guard gen == self.generation, !self.isShutdown else { return }
-                if let d = self.player.currentItem?.duration.seconds, d.isFinite, d > 0 { self.duration = d }
+                if let d = self.player.currentItem?.duration.seconds, d.isFinite, d > 0 { self.duration = d; self.recomputeSkipTimes() }
                 self.state = .playing
                 self.readyForSaving = true
                 self.evaluateIntroPrompt()
@@ -480,7 +498,7 @@ final class PlayerViewModel {
         guard readyForSaving, !isShutdown else { return }
         let s = time.seconds
         if s.isFinite, !isScrubbing { position = s }
-        if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d }
+        if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d; recomputeSkipTimes() }
         if s.isFinite { updateBufferedPosition(at: s) }
         updateBuffering()
 
@@ -656,10 +674,11 @@ final class PlayerViewModel {
 
     /// Merges custom and database times: custom intro/outro replace the database ones of the same kind.
     private func recomputeSkipTimes() {
-        guard let library else { skipTimes = databaseSkipTimes; return }
+        guard let library else { skipTimes = SkipTimeAlignment.align(databaseSkipTimes, toDuration: duration); return }
         let custom = library.customSkip(seriesSlug: series.slug, season: episode.season, episode: episode.number)
         customSkip = custom
-        var result = databaseSkipTimes
+        // AniSkip times may come from a differently long version of the episode.
+        var result = SkipTimeAlignment.align(databaseSkipTimes, toDuration: duration)
         if let custom {
             if custom.hasIntro {
                 result.removeAll { $0.skipType.isOpening }

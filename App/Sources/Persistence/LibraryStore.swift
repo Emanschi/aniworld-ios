@@ -21,6 +21,8 @@ final class LibraryStore {
     private(set) var customSkips: [String: CustomSkip] = [:]
     /// Series for which the "Kein Intro hinterlegt" prompt is switched off (local only).
     private(set) var mutedSkipPromptSlugs: Set<String> = []
+    /// Series for which the user turned the online AniSkip lookup off (wrong match etc.).
+    private(set) var onlineSkipDisabledSlugs: Set<String> = []
 
     // Sync bookkeeping (not shown in the UI).
     @ObservationIgnored private var languageTimes: [String: Date] = [:]
@@ -53,13 +55,14 @@ final class LibraryStore {
         var customSkips: [CustomSkip] = []
         var customSkipTombstones: [String: Date] = [:]
         var mutedSkipPromptSlugs: [String] = []
+        var onlineSkipDisabledSlugs: [String] = []
 
         init() {}
 
         enum CodingKeys: String, CodingKey {
             case favorites, history, progress, languages
             case languageTimes, favoriteTombstones, historyTombstones, historyClearedAt, resetAt
-            case customSkips, customSkipTombstones, mutedSkipPromptSlugs
+            case customSkips, customSkipTombstones, mutedSkipPromptSlugs, onlineSkipDisabledSlugs
         }
 
         init(from decoder: Decoder) throws {
@@ -76,6 +79,7 @@ final class LibraryStore {
             customSkips = try c.decodeIfPresent([CustomSkip].self, forKey: .customSkips) ?? []
             customSkipTombstones = try c.decodeIfPresent([String: Date].self, forKey: .customSkipTombstones) ?? [:]
             mutedSkipPromptSlugs = try c.decodeIfPresent([String].self, forKey: .mutedSkipPromptSlugs) ?? []
+            onlineSkipDisabledSlugs = try c.decodeIfPresent([String].self, forKey: .onlineSkipDisabledSlugs) ?? []
         }
     }
 
@@ -120,6 +124,7 @@ final class LibraryStore {
         customSkips = Dictionary(snap.customSkips.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
         customSkipTombstones = snap.customSkipTombstones
         mutedSkipPromptSlugs = Set(snap.mutedSkipPromptSlugs)
+        onlineSkipDisabledSlugs = Set(snap.onlineSkipDisabledSlugs)
     }
 
     /// Schedules a debounced disk write. `notify: false` is used for changes that came from sync.
@@ -151,6 +156,7 @@ final class LibraryStore {
         snap.customSkips = customSkips.values.sorted { $0.key < $1.key }
         snap.customSkipTombstones = customSkipTombstones
         snap.mutedSkipPromptSlugs = mutedSkipPromptSlugs.sorted()
+        snap.onlineSkipDisabledSlugs = onlineSkipDisabledSlugs.sorted()
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? data.write(to: fileURL, options: [.atomic])
     }
@@ -258,6 +264,77 @@ final class LibraryStore {
         scheduleSave()
     }
 
+    /// Marks the given episodes as watched (e.g. a season or series already seen elsewhere).
+    /// "Weiterschauen" then points at the last of them, so the next episode comes up.
+    func markWatched(_ episodes: [EpisodeRef], series: SeriesSummary) {
+        guard !episodes.isEmpty else { return }
+        let now = Date()
+        for ep in episodes {
+            var p = progressByEpisode[ep.id]
+                ?? EpisodeProgress(position: 0, duration: 0, watched: false, updatedAt: now)
+            p.watched = true
+            if p.duration > 0 { p.position = p.duration }
+            p.updatedAt = now
+            progressByEpisode[ep.id] = p
+        }
+        let last = episodes.max { ($0.season, $0.number) < ($1.season, $1.number) }!
+        if !hasLaterHistoryEntry(than: last) {
+            let p = progressByEpisode[last.id]
+            upsertHistory(WatchEntry(series: series, episode: last,
+                                     language: languageBySlug[series.slug],
+                                     position: p?.position ?? 0, duration: p?.duration ?? 0,
+                                     updatedAt: now, isFinished: true))
+        }
+        scheduleSave()
+    }
+
+    /// Whether every given episode is marked watched.
+    func allWatched(_ episodes: [EpisodeRef]) -> Bool {
+        !episodes.isEmpty && episodes.allSatisfy { progressByEpisode[$0.id]?.watched == true }
+    }
+
+    /// Whether any episode of the series (or of one season) has progress or is marked watched.
+    func hasProgress(seriesSlug: String, season: Int? = nil) -> Bool {
+        progressByEpisode.contains { id, p in
+            Self.matches(id, seriesSlug: seriesSlug, season: season) && (p.watched || p.position > 0)
+        }
+    }
+
+    /// Resets position and watched state of one episode, a season or the whole series, e.g. to
+    /// watch it again. Entries are kept with a new date (not deleted) so iCloud sync doesn't bring
+    /// the old progress back from another device. The "Weiterschauen" entry goes too.
+    func resetProgress(seriesSlug: String, season: Int? = nil, episodeID: String? = nil) {
+        let now = Date()
+        var changed = false
+        for (id, var p) in progressByEpisode {
+            if let episodeID { guard id == episodeID else { continue } }
+            guard Self.matches(id, seriesSlug: seriesSlug, season: season), p.watched || p.position > 0 else { continue }
+            p.position = 0
+            p.watched = false
+            p.updatedAt = now
+            progressByEpisode[id] = p
+            changed = true
+        }
+        if let entry = history.first(where: { $0.series.slug == seriesSlug }),
+           episodeID.map({ $0 == entry.episode.id }) ?? Self.matches(entry.episode.id, seriesSlug: seriesSlug, season: season) {
+            history.removeAll { $0.series.slug == seriesSlug }
+            historyTombstones[seriesSlug] = now
+            changed = true
+        }
+        if changed { scheduleSave() }
+    }
+
+    /// `EpisodeRef.id` is "<slug>-s<season>e<number>"; match exactly so "naruto" doesn't hit
+    /// "naruto-shippuden".
+    private static func matches(_ id: String, seriesSlug: String, season: Int?) -> Bool {
+        let prefix = seriesSlug + "-s"
+        guard id.hasPrefix(prefix) else { return false }
+        let rest = id.dropFirst(prefix.count)
+        guard let e = rest.firstIndex(of: "e"), let s = Int(rest[..<e]),
+              Int(rest[rest.index(after: e)...]) != nil else { return false }
+        return season.map { $0 == s } ?? true
+    }
+
     func removeFromHistory(_ slug: String) {
         history.removeAll { $0.series.slug == slug }
         historyTombstones[slug] = Date()
@@ -331,6 +408,17 @@ final class LibraryStore {
         scheduleSave(notify: false)
     }
 
+    /// True when the user turned the online AniSkip lookup off for this series.
+    func isOnlineSkipDisabled(seriesSlug: String) -> Bool {
+        onlineSkipDisabledSlugs.contains(seriesSlug)
+    }
+
+    func setOnlineSkipDisabled(_ disabled: Bool, seriesSlug: String) {
+        guard disabled != onlineSkipDisabledSlugs.contains(seriesSlug) else { return }
+        if disabled { onlineSkipDisabledSlugs.insert(seriesSlug) } else { onlineSkipDisabledSlugs.remove(seriesSlug) }
+        scheduleSave(notify: false)
+    }
+
     func resetMutedSkipPrompts() {
         guard !mutedSkipPromptSlugs.isEmpty else { return }
         mutedSkipPromptSlugs = []
@@ -356,6 +444,7 @@ final class LibraryStore {
         customSkips = [:]
         customSkipTombstones = [:]
         mutedSkipPromptSlugs = []
+        onlineSkipDisabledSlugs = []
         resetAt = Date()
         onChange?()
         flush()

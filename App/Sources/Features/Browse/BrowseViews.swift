@@ -12,21 +12,51 @@ import AniworldKit
 final class GenreSeriesViewModel {
     var series: [SeriesSummary] = []
     var phase: LoadPhase = .loading
+    /// True while more pages are still arriving.
+    private(set) var isLoadingMore = false
     private var loadedSlug: String?
 
     func load(genre: GenreRef, service: AniworldService, force: Bool = false) async {
         if loadedSlug == genre.slug && !force { return }
         phase = .loading
+        isLoadingMore = true
         do {
-            let result = try await service.series(inGenre: genre.slug)
+            let result = try await service.series(inGenre: genre.slug, progress: { [weak self] partial in
+                await self?.show(partial)
+            })
             if Task.isCancelled { return }
             series = result
             loadedSlug = genre.slug
+            isLoadingMore = false
             phase = .loaded
         } catch {
             if Task.isCancelled { return }
-            phase = .failed(error)
+            isLoadingMore = false
+            // Keep what already arrived; only show the error screen when nothing did.
+            if series.isEmpty { phase = .failed(error) }
         }
+    }
+
+    private func show(_ partial: [SeriesSummary]) {
+        guard !partial.isEmpty, partial.count >= series.count else { return }
+        series = partial
+        phase = .loaded
+    }
+}
+
+/// Footer below a growing result grid while more pages are loading.
+struct LoadingMoreRow: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().tint(Theme.textSecondary)
+            Text("\(count) Serien geladen, lädt weitere …")
+                .font(.footnote)
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
     }
 }
 
@@ -84,6 +114,10 @@ struct GenreSeriesView: View {
                         }
                         .buttonStyle(PressableStyle())
                     }
+                }
+                if vm.isLoadingMore {
+                    LoadingMoreRow(count: vm.series.count)
+                        .padding(.top, 18)
                 }
             }
         }
@@ -317,7 +351,14 @@ final class ReleaseCalendarViewModel {
 /// Upcoming releases grouped by day.
 struct ReleaseCalendarView: View {
     @Environment(\.aniworld) private var service
+    @Environment(LibraryStore.self) private var library
     @State private var vm = ReleaseCalendarViewModel()
+    /// Only series that are favorites or in "Weiterschauen".
+    @AppStorage("calendarOnlyMine") private var onlyMine = false
+
+    private func isMine(_ slug: String) -> Bool {
+        library.isFavorite(slug) || library.lastWatched(seriesSlug: slug) != nil
+    }
 
     var body: some View {
         ScrollView {
@@ -328,6 +369,16 @@ struct ReleaseCalendarView: View {
         .background(AppBackground())
         .navigationTitle("Kalender")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    onlyMine.toggle()
+                } label: {
+                    Image(systemName: onlyMine ? "star.circle.fill" : "star.circle")
+                }
+                .accessibilityLabel(onlyMine ? "Alle Serien zeigen" : "Nur meine Serien zeigen")
+            }
+        }
         .refreshable { await vm.load(service: service, force: true) }
         .task { await vm.load(service: service) }
     }
@@ -347,19 +398,27 @@ struct ReleaseCalendarView: View {
                 Task { await vm.load(service: service, force: true) }
             }
         case .loaded:
-            let days = vm.days.filter { !$0.entries.isEmpty }
+            let days = vm.days
+                .map { day -> CalendarDay in
+                    var copy = day
+                    if onlyMine { copy.entries = day.entries.filter { isMine($0.series.slug) } }
+                    return copy
+                }
+                .filter { !$0.entries.isEmpty }
             if days.isEmpty {
                 ContentUnavailableView(
-                    "Kein Kalender",
+                    onlyMine ? "Nichts von deinen Serien" : "Kein Kalender",
                     systemImage: "calendar",
-                    description: Text("Aktuell sind keine Veröffentlichungen eingetragen.")
+                    description: Text(onlyMine
+                        ? "In den nächsten Tagen erscheint nichts von deinen Favoriten oder Serien in „Weiterschauen“."
+                        : "Aktuell sind keine Veröffentlichungen eingetragen.")
                 )
                 .padding(.top, 40)
             } else {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     ForEach(days) { day in
                         VStack(alignment: .leading, spacing: 10) {
-                            SectionHeader(title: day.title)
+                            SectionHeader(title: day.displayTitle())
                             VStack(spacing: 8) {
                                 ForEach(day.entries) { entry in
                                     NavigationLink(destination: SeriesDetailView(series: entry.series)) {

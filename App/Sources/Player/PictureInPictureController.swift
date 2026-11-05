@@ -14,6 +14,10 @@ final class PictureInPictureController: NSObject, AVPictureInPictureControllerDe
     @ObservationIgnored private var possibleObservation: NSKeyValueObservation?
     /// Called on the main actor whenever `isActive` changes.
     @ObservationIgnored var onActiveChange: ((Bool) -> Void)?
+    /// Called when the user asks to return from PiP to the full-screen player.
+    @ObservationIgnored var onRestoreRequested: (() -> Void)?
+    /// True once the user tapped "back to app" in the current PiP session (false: closed with X).
+    @ObservationIgnored private(set) var restoreRequested = false
 
     func attach(to layer: AVPlayerLayer) {
         guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
@@ -50,20 +54,35 @@ final class PictureInPictureController: NSObject, AVPictureInPictureControllerDe
 
     // MARK: AVPictureInPictureControllerDelegate
 
+    // The delegate is called on the main thread; `DispatchQueue.main.async` keeps the callbacks ordered
+    // (restore always arrives before "did stop").
     nonisolated func pictureInPictureControllerDidStartPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController) {
-        Task { @MainActor in self.setActive(true) }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                self.restoreRequested = false
+                self.setActive(true)
+            }
+        }
     }
 
     nonisolated func pictureInPictureControllerDidStopPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController) {
-        Task { @MainActor in self.setActive(false) }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { self.setActive(false) }
+        }
     }
 
     nonisolated func pictureInPictureController(
         _ pictureInPictureController: AVPictureInPictureController,
         restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler:
             @escaping (Bool) -> Void) {
-        completionHandler(true)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                self.restoreRequested = true
+                self.onRestoreRequested?()
+            }
+            completionHandler(true)
+        }
     }
 }

@@ -13,6 +13,24 @@ struct SeriesDetailView: View {
     @State private var downloadPrompt: EpisodeRef?
     @State private var confirmDeleteSeason = false
     @State private var confirmDeleteSeries = false
+    @State private var resetPrompt: ResetScope?
+
+    /// What "Fortschritt zurücksetzen" applies to.
+    private enum ResetScope: Equatable {
+        case season(Int)
+        case series
+    }
+
+    private var resetPromptBinding: Binding<Bool> {
+        Binding<Bool>(get: { resetPrompt != nil }, set: { if !$0 { resetPrompt = nil } })
+    }
+
+    private var resetPromptTitle: String {
+        switch resetPrompt {
+        case .season(let s): s == 0 ? "Fortschritt aller Filme zurücksetzen?" : "Fortschritt von Staffel \(s) zurücksetzen?"
+        case .series, nil: "Gesamten Fortschritt von „\(displaySummary.title)“ zurücksetzen?"
+        }
+    }
     @State private var vm = SeriesDetailViewModel()
     @State private var descriptionExpanded = false
 
@@ -61,6 +79,23 @@ struct SeriesDetailView: View {
                 }
             }
             Button("Abbrechen", role: .cancel) {}
+        }
+        .confirmationDialog(
+            resetPromptTitle,
+            isPresented: resetPromptBinding,
+            titleVisibility: .visible,
+            presenting: resetPrompt
+        ) { scope in
+            Button("Zurücksetzen", role: .destructive) {
+                switch scope {
+                case .season(let s): library.resetProgress(seriesSlug: displaySummary.slug, season: s)
+                case .series: library.resetProgress(seriesSlug: displaySummary.slug)
+                }
+                Haptics.success()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { _ in
+            Text("Gesehen-Markierungen und Fortschritt werden entfernt, damit du von vorne schauen kannst. Downloads bleiben erhalten.")
         }
         .confirmationDialog(
             downloadPromptTitle,
@@ -395,12 +430,20 @@ struct SeriesDetailView: View {
 
     @ViewBuilder
     private func episodeMenu(_ episode: EpisodeRef, in episodes: [EpisodeRef]) -> some View {
-        let watched = library.progress(for: episode)?.watched ?? false
+        let progress = library.progress(for: episode)
+        let watched = progress?.watched ?? false
         Button {
             library.setWatched(!watched, episode: episode, series: displaySummary)
         } label: {
             Label(watched ? "Als ungesehen markieren" : "Als gesehen markieren",
                   systemImage: watched ? "eye.slash" : "eye")
+        }
+        if !watched, (progress?.position ?? 0) > 0 {
+            Button {
+                library.resetProgress(seriesSlug: displaySummary.slug, episodeID: episode.id)
+            } label: {
+                Label("Fortschritt zurücksetzen", systemImage: "arrow.counterclockwise")
+            }
         }
         Button {
             library.markWatchedUpTo(episode, in: episodes, series: displaySummary)
@@ -442,12 +485,64 @@ struct SeriesDetailView: View {
     @ToolbarContentBuilder
     private var languageMenu: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if downloads.hasDownloads(seriesSlug: displaySummary.slug) {
+            let slug = displaySummary.slug
+            let hasDownloads = downloads.hasDownloads(seriesSlug: slug)
+            let hasProgress = library.hasProgress(seriesSlug: slug)
+            if hasDownloads || hasProgress || !vm.seasons.isEmpty {
                 Menu {
-                    Button(role: .destructive) {
-                        confirmDeleteSeries = true
-                    } label: {
-                        Label("Alle Downloads dieser Serie löschen", systemImage: "trash")
+                    if let season = vm.selectedSeason, !library.allWatched(vm.currentEpisodes) {
+                        Button {
+                            library.markWatched(vm.currentEpisodes, series: displaySummary)
+                            Haptics.success()
+                        } label: {
+                            Label(season == 0 ? "Alle Filme als gesehen markieren"
+                                              : "Staffel \(season) als gesehen markieren",
+                                  systemImage: "checkmark.circle")
+                        }
+                    }
+                    if vm.seasons.contains(where: { !$0.isFilms }) {
+                        Button {
+                            Task {
+                                guard let all = try? await vm.allRegularEpisodes(slug: slug, service: service) else { return }
+                                library.markWatched(all, series: displaySummary)
+                                Haptics.success()
+                            }
+                        } label: {
+                            Label("Ganze Serie als gesehen markieren", systemImage: "checkmark.circle.fill")
+                        }
+                    }
+                    if let season = vm.selectedSeason, library.hasProgress(seriesSlug: slug, season: season) {
+                        Button {
+                            resetPrompt = .season(season)
+                        } label: {
+                            Label(season == 0 ? "Fortschritt der Filme zurücksetzen"
+                                              : "Fortschritt von Staffel \(season) zurücksetzen",
+                                  systemImage: "arrow.counterclockwise")
+                        }
+                    }
+                    if hasProgress {
+                        Button {
+                            resetPrompt = .series
+                        } label: {
+                            Label("Gesamten Fortschritt zurücksetzen", systemImage: "arrow.counterclockwise.circle")
+                        }
+                    }
+                    if settings.onlineSkipTimes {
+                        let disabled = library.isOnlineSkipDisabled(seriesSlug: slug)
+                        Button {
+                            library.setOnlineSkipDisabled(!disabled, seriesSlug: slug)
+                        } label: {
+                            Label(disabled ? "AniSkip-Zeitmarken für diese Serie einschalten"
+                                           : "AniSkip-Zeitmarken für diese Serie ausschalten",
+                                  systemImage: disabled ? "forward.end" : "forward.end.alt")
+                        }
+                    }
+                    if hasDownloads {
+                        Button(role: .destructive) {
+                            confirmDeleteSeries = true
+                        } label: {
+                            Label("Alle Downloads dieser Serie löschen", systemImage: "trash")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
