@@ -31,6 +31,8 @@ struct LibraryState: Codable, Equatable, Sendable {
 
 /// What one device writes to `.aniworld-sync/devices/<deviceID>.json`.
 struct SyncSnapshot: Codable, Sendable {
+    /// Stays 1: the statistics fields below are optional additions. Older app versions simply ignore
+    /// them (and omit them when writing their own file), newer ones fall back to empty values.
     static let currentSchemaVersion = 1
 
     var schemaVersion: Int
@@ -47,8 +49,13 @@ struct SyncSnapshot: Codable, Sendable {
     var resetAt: Date?
     var customSkips: [CustomSkip]
     var customSkipTombstones: [String: Date]
+    /// Watch sessions recorded on *this* device only (each device writes its own; merge = union).
+    var statsSessions: [WatchSession]
+    var statsSeriesMeta: [String: SeriesMeta]
+    var statsResetAt: Date?
 
-    init(deviceID: String, deviceName: String, writtenAt: Date = Date(), state: LibraryState) {
+    init(deviceID: String, deviceName: String, writtenAt: Date = Date(), state: LibraryState,
+         stats: StatsState = StatsState()) {
         schemaVersion = Self.currentSchemaVersion
         self.deviceID = deviceID
         self.deviceName = deviceName
@@ -63,6 +70,13 @@ struct SyncSnapshot: Codable, Sendable {
         resetAt = state.resetAt
         customSkips = state.customSkips
         customSkipTombstones = state.customSkipTombstones
+        statsSessions = stats.sessions
+        statsSeriesMeta = stats.seriesMeta
+        statsResetAt = stats.resetAt
+    }
+
+    var statsState: StatsState {
+        StatsState(sessions: statsSessions, seriesMeta: statsSeriesMeta, resetAt: statsResetAt)
     }
 
     var state: LibraryState {
@@ -77,6 +91,7 @@ struct SyncSnapshot: Codable, Sendable {
         case schemaVersion, deviceID, deviceName, writtenAt, favorites, favoriteTombstones
         case history, historyTombstones, historyClearedAt, progress, languages, resetAt
         case customSkips, customSkipTombstones
+        case statsSessions, statsSeriesMeta, statsResetAt
     }
 
     init(from decoder: Decoder) throws {
@@ -95,5 +110,8 @@ struct SyncSnapshot: Codable, Sendable {
         resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
         customSkips = try c.decodeIfPresent([CustomSkip].self, forKey: .customSkips) ?? []
         customSkipTombstones = try c.decodeIfPresent([String: Date].self, forKey: .customSkipTombstones) ?? [:]
+        statsSessions = try c.decodeIfPresent([WatchSession].self, forKey: .statsSessions) ?? []
+        statsSeriesMeta = try c.decodeIfPresent([String: SeriesMeta].self, forKey: .statsSeriesMeta) ?? [:]
+        statsResetAt = try c.decodeIfPresent(Date.self, forKey: .statsResetAt)
     }
 }

@@ -188,7 +188,7 @@ extension View {
     /// Injects the same environment objects as `AniworldApp`, backed by the mock service.
     @MainActor
     func previewEnvironment(service: AniworldService = MockAniworldService()) -> some View {
-        let env = AppEnvironment.make(service: service)
+        let env = AppEnvironment.make(service: service, stats: WatchStatsStore.preview())
         return self
             .environment(env.library)
             .environment(env.settings)
@@ -196,6 +196,7 @@ extension View {
             .environment(env.sync)
             .environment(env.downloads)
             .environment(env.watcher)
+            .environment(env.stats)
             .environment(\.aniworld, env.service)
             .preferredColorScheme(.dark)
     }

@@ -12,6 +12,7 @@ struct PlayerScreen: View {
     @Environment(LibraryStore.self) private var library
     @Environment(SettingsStore.self) private var settings
     @Environment(DownloadManager.self) private var downloads
+    @Environment(WatchStatsStore.self) private var stats
     @Environment(\.aniworld) private var service
     @Environment(\.scenePhase) private var scenePhase
 
@@ -36,7 +37,7 @@ struct PlayerScreen: View {
             guard viewModel == nil else { return }
             let vm = PlayerViewModel(session: session)
             vm.attach(service: service, library: library, settings: settings, coordinator: playback,
-                      downloads: downloads)
+                      downloads: downloads, stats: stats)
             viewModel = vm
             vm.start()
         }
@@ -55,6 +56,7 @@ struct PlayerScreen: View {
             if phase != .active {
                 viewModel?.saveProgress()
                 library.flush()
+                if phase == .background { viewModel?.flushStats() }
                 // Screen brightness is a system-wide setting: give it back while we are not in front
                 // (also covers Picture in Picture and the app switcher).
                 if let orig = originalBrightness {
