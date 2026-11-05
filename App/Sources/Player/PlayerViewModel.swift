@@ -133,7 +133,8 @@ final class PlayerViewModel {
         self.downloads = downloads
 
         player.defaultRate = playbackRate
-        pip.onActiveChange = { [weak self] active in self?.isPictureInPictureActive = active }
+        pip.onActiveChange = { [weak self] active in self?.pipActiveChanged(active) }
+        pip.onRestoreRequested = { [weak self] in self?.coordinator?.isMinimized = false }
         nowPlaying = NowPlayingController(handlers: .init(
             play: { [weak self] in self?.play() },
             pause: { [weak self] in self?.pause() },
@@ -180,6 +181,22 @@ final class PlayerViewModel {
         // The file is no longer in use: delete it now if it was watched.
         deleteWatchedDownloadIfNeeded(episodeID: episode.id)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Picture in Picture started/stopped. Starting minimizes the full-screen player so the user can
+    /// browse; stopping via "back to app" restores it, stopping via X ends the playback.
+    private func pipActiveChanged(_ active: Bool) {
+        isPictureInPictureActive = active
+        guard !isShutdown, let coordinator else { return }
+        if active {
+            coordinator.isMinimized = true
+        } else if coordinator.isMinimized {
+            if pip.restoreRequested {
+                coordinator.isMinimized = false
+            } else {
+                close()
+            }
+        }
     }
 
     func close() {
@@ -232,7 +249,8 @@ final class PlayerViewModel {
             )
             // AniSkip only when nothing is bundled and the user allows online lookups.
             // Own times still win in `recomputeSkipTimes()`.
-            if times.isEmpty, self.settings?.enableSkipDetection == true, self.settings?.onlineSkipTimes == true {
+            if times.isEmpty, self.settings?.enableSkipDetection == true, self.settings?.onlineSkipTimes == true,
+               self.library?.isOnlineSkipDisabled(seriesSlug: series.slug) != true {
                 times = await service.onlineSkipTimes(
                     seriesTitle: series.title,
                     seriesSlug: series.slug,

@@ -279,6 +279,11 @@ struct DownloadsView: View {
                         }
                     } else {
                         ProgressBar(value: job.progress, height: 4)
+                        if downloads.suspendedForWiFi.contains(job.id) {
+                            Text("Wartet auf WLAN…")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
                     }
                 case .failed:
                     Text(job.errorMessage ?? "Download fehlgeschlagen")

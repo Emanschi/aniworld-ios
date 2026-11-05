@@ -29,9 +29,19 @@ struct RootView: View {
                 .tabItem { Label("Einstellungen", systemImage: "gearshape.fill") }
         }
         .tint(Theme.accent)
-        .fullScreenCover(item: $playback.activeSession) { session in
-            PlayerScreen(session: session)
+        // Not a fullScreenCover: while Picture in Picture plays, the player stays mounted (so the
+        // AVPlayer / AVPlayerLayer survive) but is invisible and does not take touches.
+        .overlay {
+            if let session = playback.activeSession {
+                PlayerScreen(session: session)
+                    .id(session.id)
+                    .opacity(playback.isMinimized ? 0 : 1)
+                    .allowsHitTesting(!playback.isMinimized)
+                    .accessibilityHidden(playback.isMinimized)
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: playback.isMinimized)
         .sheet(isPresented: $sync.showOnboarding, onDismiss: {
             if !sync.isConfigured { sync.skipOnboarding() }
         }) {

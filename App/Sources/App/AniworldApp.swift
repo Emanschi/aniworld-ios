@@ -62,7 +62,7 @@ struct AppEnvironment {
             service: service, library: library, settings: settings,
             playback: PlaybackCoordinator(service: service, library: library, settings: settings),
             sync: LibrarySyncService(library: library),
-            downloads: DownloadManager(service: service, settings: settings),
+            downloads: DownloadManager(service: service, settings: settings, library: library),
             watcher: EpisodeWatcher(service: service, library: library, settings: settings)
         )
     }

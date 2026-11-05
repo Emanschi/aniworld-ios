@@ -30,8 +30,8 @@ struct PlayerScreen: View {
                 PlayerContentView(vm: viewModel)
             }
         }
-        .statusBarHidden(true)
-        .persistentSystemOverlays(.hidden)
+        .statusBarHidden(!playback.isMinimized)
+        .persistentSystemOverlays(playback.isMinimized ? .automatic : .hidden)
         .task {
             guard viewModel == nil else { return }
             let vm = PlayerViewModel(session: session)
@@ -58,6 +58,11 @@ struct PlayerScreen: View {
             }
             updateBrightness()
         }
+        // Minimized = Picture in Picture is playing while the user browses the app.
+        .onChange(of: playback.isMinimized) { _, minimized in
+            if minimized { PlayerOrientation.leavePlayer() } else { PlayerOrientation.enterPlayer() }
+            updateBrightness()
+        }
         // The PiP button keeps the app active, so the scene phase alone does not cover it.
         .onChange(of: viewModel?.isPictureInPictureActive ?? false) { _, _ in
             updateBrightness()
@@ -82,7 +87,6 @@ struct PlayerScreen: View {
         }
     }
 }
-}
 
 // MARK: - Content
 
@@ -104,6 +108,7 @@ private struct PlayerContentView: View {
     @State private var hudState: PlayerHUDState?
     @State private var hudDismissTask: Task<Void, Never>?
     @State private var isActivelySwiping = false
+    @State private var lastSwipeAt = Date.distantPast
     @State private var baseBrightness: Double = 0.5
     @State private var baseVolume: Double = 0.5
 
@@ -197,6 +202,19 @@ private struct PlayerContentView: View {
         .onChange(of: vm.episode.id) { _, _ in
             controlsShown = true
             bump()
+        }
+        .task {
+            // Hardware volume buttons: the hidden MPVolumeView suppresses the system HUD, so show ours.
+            // Cancelled with the view, which ends the stream and invalidates the KVO observation.
+            let stream = AsyncStream<Float> { continuation in
+                let observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { _, change in
+                    if let value = change.newValue { continuation.yield(value) }
+                }
+                continuation.onTermination = { _ in observation.invalidate() }
+            }
+            for await value in stream {
+                handleHardwareVolume(Double(value))
+            }
         }
         .onDisappear {
             bubbleTask?.cancel()
@@ -365,6 +383,7 @@ private struct PlayerContentView: View {
 
     private func handleVerticalSwipe(isLeft: Bool, deltaFraction: Double) {
         guard !locked else { return }
+        lastSwipeAt = Date()
         if !isActivelySwiping {
             isActivelySwiping = true
             baseBrightness = Double(UIScreen.main.brightness)
@@ -390,6 +409,11 @@ private struct PlayerContentView: View {
 
     private func handleSwipeEnd() {
         isActivelySwiping = false
+        lastSwipeAt = Date()
+        scheduleHUDDismiss()
+    }
+
+    private func scheduleHUDDismiss() {
         hudDismissTask?.cancel()
         hudDismissTask = Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
@@ -398,6 +422,17 @@ private struct PlayerContentView: View {
                 hudState = nil
             }
         }
+    }
+
+    /// Volume changed through the hardware buttons (or the system). Ignores changes caused by our
+    /// own swipe, which arrive slightly delayed through the hidden volume slider.
+    private func handleHardwareVolume(_ value: Double) {
+        guard !isActivelySwiping, !locked, Date().timeIntervalSince(lastSwipeAt) > 0.6 else { return }
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+            hudState = PlayerHUDState(kind: .volume, value: min(max(value, 0), 1))
+        }
+        bump()
+        scheduleHUDDismiss()
     }
 }
 

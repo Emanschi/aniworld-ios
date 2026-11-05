@@ -21,6 +21,9 @@ struct PlaybackSession: Identifiable, Hashable {
 @Observable
 final class PlaybackCoordinator {
     var activeSession: PlaybackSession?
+    /// True while Picture in Picture is active: the full-screen player stays mounted (keeping the
+    /// AVPlayer alive) but is hidden so the user can browse the app.
+    var isMinimized = false
 
     @ObservationIgnored let service: AniworldService
     @ObservationIgnored let library: LibraryStore
@@ -36,6 +39,7 @@ final class PlaybackCoordinator {
     /// Plays `episode`. `language` nil → series' preferred language, then settings priority.
     func play(series: SeriesSummary, episode: EpisodeRef, seasonEpisodes: [EpisodeRef] = [],
               language: StreamLanguage? = nil, fromStart: Bool = false) {
+        isMinimized = false
         activeSession = PlaybackSession(
             series: series, episode: episode, seasonEpisodes: seasonEpisodes,
             language: language ?? library.preferredLanguage(seriesSlug: series.slug),
@@ -95,6 +99,7 @@ final class PlaybackCoordinator {
     }
 
     func dismiss() {
+        isMinimized = false
         activeSession = nil
     }
 }

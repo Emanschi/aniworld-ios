@@ -232,6 +232,7 @@ final class DownloadManager {
 
     @ObservationIgnored private let service: AniworldService
     @ObservationIgnored private let settings: SettingsStore
+    @ObservationIgnored private let library: LibraryStore?
     @ObservationIgnored private let sessionDelegate = DownloadSessionDelegate()
     @ObservationIgnored private var hlsSession: AVAssetDownloadURLSession?
     @ObservationIgnored private var fileSession: URLSession?
@@ -247,9 +248,14 @@ final class DownloadManager {
     /// Observable copy of the Wi-Fi state (the watcher itself is not observable).
     private(set) var wifiConnected = false
 
-    init(service: AniworldService, settings: SettingsStore) {
+    /// Running jobs whose transfer was suspended because Wi-Fi is required but missing. They keep their
+    /// progress and are resumed when Wi-Fi returns (or the setting is switched off).
+    private(set) var suspendedForWiFi: Set<String> = []
+
+    init(service: AniworldService, settings: SettingsStore, library: LibraryStore? = nil) {
         self.service = service
         self.settings = settings
+        self.library = library
         loadIndex()
         sessionDelegate.manager = self
 
@@ -358,6 +364,7 @@ final class DownloadManager {
         compressTasks[id]?.cancel()
         compressTasks[id] = nil
         wifiOnlyTasks.remove(id)
+        suspendedForWiFi.remove(id)
         jobs[id] = nil
         cancelSessionTasks(id: id)
         saveIndex()
@@ -413,14 +420,57 @@ final class DownloadManager {
         pump()
     }
 
-    /// With "only Wi-Fi" on and no Wi-Fi: stop transfers that could use cellular data and requeue them.
-    /// Plain file downloads started with a Wi-Fi-only request pause on their own and stay untouched.
+    /// With "only Wi-Fi" on and no Wi-Fi: suspend transfers that could use cellular data (progress is kept);
+    /// they are resumed as soon as Wi-Fi is back or the setting is off. Only when a task can't be found the
+    /// job is requeued. Plain file downloads started with a Wi-Fi-only request pause on their own.
     private func enforceNetworkPolicy() {
-        guard isWaitingForWiFi else { return }
-        for job in jobs.values where job.status == .active && job.isCompressing != true
-            && !wifiOnlyTasks.contains(job.id) {
-            requeue(job.id)
+        guard restored else { return }
+        if isWaitingForWiFi {
+            let ids = jobs.values.filter {
+                $0.status == .active && $0.isCompressing != true
+                    && !wifiOnlyTasks.contains($0.id) && !suspendedForWiFi.contains($0.id)
+            }.map { $0.id }
+            guard !ids.isEmpty else { return }
+            Task { [weak self] in await self?.suspendForWiFi(ids) }
+        } else if !suspendedForWiFi.isEmpty {
+            let ids = suspendedForWiFi
+            Task { [weak self] in await self?.resumeAfterWiFi(ids) }
         }
+    }
+
+    private func allSessionTasks() async -> [URLSessionTask] {
+        var all: [URLSessionTask] = []
+        if let hlsSession { all.append(contentsOf: await hlsSession.allTasks) }
+        if let fileSession { all.append(contentsOf: await fileSession.allTasks) }
+        return all
+    }
+
+    private func suspendForWiFi(_ ids: [String]) async {
+        let tasks = await allSessionTasks()
+        // The situation may have changed while we were waiting for the task list.
+        guard isWaitingForWiFi else { return }
+        for id in ids {
+            guard let job = jobs[id], job.status == .active, job.isCompressing != true,
+                  !wifiOnlyTasks.contains(id) else { continue }
+            let matching = tasks.filter { $0.taskDescription == id }
+            if matching.isEmpty {
+                requeue(id)
+            } else {
+                for task in matching { task.suspend() }
+                suspendedForWiFi.insert(id)
+            }
+        }
+        pump()
+    }
+
+    private func resumeAfterWiFi(_ ids: Set<String>) async {
+        let tasks = await allSessionTasks()
+        guard !isWaitingForWiFi else { return }
+        for id in ids where suspendedForWiFi.contains(id) {
+            for task in tasks where task.taskDescription == id { task.resume() }
+            suspendedForWiFi.remove(id)
+        }
+        pump()
     }
 
     private func requeue(_ id: String) {
@@ -428,6 +478,7 @@ final class DownloadManager {
         resolveTasks[id]?.cancel()
         resolveTasks[id] = nil
         wifiOnlyTasks.remove(id)
+        suspendedForWiFi.remove(id)
         job.status = .queued
         job.progress = 0
         job.currentHoster = nil
@@ -463,6 +514,7 @@ final class DownloadManager {
 
     private func resolveAndStart(_ id: String) async {
         guard let job = jobs[id] else { return }
+        prefetchSkipTimes(for: job)
         do {
             let hosters = try await service.hosters(for: job.episode)
             guard !hosters.isEmpty else { throw AniworldError.noPlayableStream }
@@ -484,6 +536,21 @@ final class DownloadManager {
             if Task.isCancelled || error is CancellationError { return }
             if let a = error as? AniworldError, a == .cancelled { return }
             markFailed(id: id, message: Self.message(for: error))
+        }
+    }
+
+    /// Looks up AniSkip times once while online so they are cached for offline playback of the download.
+    /// Fire-and-forget: never blocks or fails the download.
+    private func prefetchSkipTimes(for job: DownloadJob) {
+        guard settings.enableSkipDetection, settings.onlineSkipTimes,
+              library?.isOnlineSkipDisabled(seriesSlug: job.series.slug) != true else { return }
+        let service = self.service
+        let series = job.series
+        let episode = job.episode
+        Task(priority: .utility) {
+            _ = await service.onlineSkipTimes(
+                seriesTitle: series.title, seriesSlug: series.slug,
+                season: episode.season, episode: episode.number)
         }
     }
 
@@ -559,6 +626,7 @@ final class DownloadManager {
         }
         resolveTasks[id] = nil
         wifiOnlyTasks.remove(id)
+        suspendedForWiFi.remove(id)
 
         // Plain mp4 files can be re-encoded on the device. The job stays visible as "active"
         // (no record yet), so the original file can never be played while it is being replaced.
@@ -689,6 +757,7 @@ final class DownloadManager {
         guard var job = jobs[id], job.status == .active, job.isCompressing != true else { return }
         resolveTasks[id] = nil
         wifiOnlyTasks.remove(id)
+        suspendedForWiFi.remove(id)
         if let hoster = job.currentHoster, !job.triedHosters.contains(hoster) {
             job.triedHosters.append(hoster)
         }
@@ -742,6 +811,13 @@ final class DownloadManager {
         restored = true
         saveIndex()
         pump()
+        // Tasks that were suspended before the relaunch must not run on cellular (or are resumed again).
+        enforceNetworkPolicy()
+        if !isWaitingForWiFi {
+            for task in all where task.taskDescription.map({ running.contains($0) }) == true {
+                task.resume()
+            }
+        }
     }
 
     // MARK: Persistence

@@ -8,7 +8,14 @@
       "Schon woanders gesehen? Ganze Staffeln oder die komplette Serie lassen sich über das Menü „…“ auf der Serienseite als gesehen abhaken. „Weiterschauen“ springt dann zur nächsten Folge.",
       "Fortschritt zurücksetzen, um nochmal zu schauen: einzelne Folgen (lange drücken), eine ganze Staffel oder die komplette Serie (Menü „…“ auf der Serienseite).",
       "Die Helligkeit wird jetzt auch zurückgesetzt, wenn du den Mini-Player (Bild-in-Bild) über den Button startest, und beim Zurückkehren wieder angewendet.",
-      "Intro- und Outro-Sprünge von AniSkip passen jetzt zur Länge der gerade laufenden Folge. Zeitmarken einer anders langen Fassung werden nicht mehr verwendet (z. B. Attack on Titan sprang zu früh)."
+      "Intro- und Outro-Sprünge von AniSkip passen jetzt zur Länge der gerade laufenden Folge. Zeitmarken einer anders langen Fassung werden nicht mehr verwendet (z. B. Attack on Titan sprang zu früh).",
+      "Im Video-Player erscheint beim Drücken der Lautstärketasten jetzt wieder eine Lautstärkeanzeige.",
+      "Downloads berücksichtigen den AniSkip-Schalter pro Serie, und die Intro-/Outro-Zeiten werden beim Download schon für das Offline-Schauen gespeichert.",
+      "Bei „Nur im WLAN“ pausieren laufende Downloads jetzt, wenn das WLAN wegfällt, und machen danach dort weiter, wo sie waren, statt von vorn zu beginnen.",
+      "Bild-in-Bild funktioniert jetzt wie ein Mini-Player: Das Video läuft weiter, während du in der App stöberst. Über „Zurück zur App“ kehrst du zum Vollbild-Player zurück, mit dem X beendest du die Wiedergabe.",
+      "AniSkip lässt sich pro Serie ausschalten (Menü „…“ auf der Serienseite), falls die Zeitmarken einmal nicht passen.",
+      "Abgefragte Intro- und Outro-Zeiten werden auf dem Gerät gespeichert und funktionieren so auch offline.",
+      "Kalender: Tage heißen jetzt „Heute“, „Morgen“ oder „Freitag, 06.11.“, und mit dem Stern zeigst du nur deine Favoriten und Serien aus „Weiterschauen“."
     ]
   },
   {
