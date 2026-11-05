@@ -98,6 +98,9 @@ final class PlayerViewModel {
     @ObservationIgnored private var readyForSaving = false
     @ObservationIgnored private var pendingStart: Double = 0
     @ObservationIgnored private var tickCount = 0
+    /// Watched fraction (0...1) of the current episode at the last progress save.
+    @ObservationIgnored private var lastWatchedFraction: Double = 0
+    private static let watchedThreshold = 0.9
     @ObservationIgnored private var nextInfo: (EpisodeRef, [EpisodeRef])?
     @ObservationIgnored private var isShutdown = false
     @ObservationIgnored private var attached = false
@@ -174,6 +177,8 @@ final class PlayerViewModel {
         pip.stop()
         player.pause()
         player.replaceCurrentItem(with: nil)
+        // The file is no longer in use: delete it now if it was watched.
+        deleteWatchedDownloadIfNeeded(episodeID: episode.id)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
@@ -219,12 +224,22 @@ final class PlayerViewModel {
     private func loadSkipTimes(service: AniworldService, gen: Int) {
         skipTimesTask = Task { [weak self, series, episode] in
             guard let self else { return }
-            let times = await service.skipTimes(
+            var times = await service.skipTimes(
                 seriesTitle: series.title,
                 seriesSlug: series.slug,
                 season: episode.season,
                 episode: episode.number
             )
+            // AniSkip only when nothing is bundled and the user allows online lookups.
+            // Own times still win in `recomputeSkipTimes()`.
+            if times.isEmpty, self.settings?.enableSkipDetection == true, self.settings?.onlineSkipTimes == true {
+                times = await service.onlineSkipTimes(
+                    seriesTitle: series.title,
+                    seriesSlug: series.slug,
+                    season: episode.season,
+                    episode: episode.number
+                )
+            }
             guard gen == self.generation, !Task.isCancelled else { return }
             self.databaseSkipTimes = times
             self.skipLookupDone = true
@@ -522,12 +537,17 @@ final class PlayerViewModel {
         if atEnd { pos = dur }
         library.updateProgress(series: series, episode: episode, language: currentLanguage,
                                position: min(pos, dur), duration: dur)
+        // Only remembered here; a watched download is deleted when the user leaves the episode.
+        lastWatchedFraction = min(pos, dur) / dur
+    }
 
-        // Smart Downloads: Automatisches Löschen gesehener Folgen
-        let isFinished = dur > 0 && (pos / dur >= 0.9 || dur - pos < 60)
-        if isFinished, settings?.autoDeleteWatchedDownloads == true {
-            downloads?.delete(episode.id)
-        }
+    /// Smart Downloads: deletes the download of the episode being left, if it was watched.
+    /// Never called while the episode is playing.
+    private func deleteWatchedDownloadIfNeeded(episodeID: String) {
+        guard settings?.autoDeleteWatchedDownloads == true,
+              lastWatchedFraction >= Self.watchedThreshold,
+              let downloads, downloads.state(for: episodeID) == .downloaded else { return }
+        downloads.delete(episodeID)
     }
 
     // MARK: Next episode & autoplay
@@ -591,6 +611,8 @@ final class PlayerViewModel {
         countdownTask?.cancel()
         countdown = nil
         saveProgress()
+        deleteWatchedDownloadIfNeeded(episodeID: episode.id)
+        lastWatchedFraction = 0
 
         episode = next
         seasonEpisodes = episodes

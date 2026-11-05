@@ -58,6 +58,21 @@ public final class LocalSkipDatabase: @unchecked Sendable {
             case .wildcard: return 1
             }
         }
+
+        /// Strict ordering used to pick the winner when several matchers match an episode.
+        func isMoreSpecific(than other: EpisodeMatcher) -> Bool {
+            if priority != other.priority { return priority > other.priority }
+            if case .range(let s1, let e1) = pattern, case .range(let s2, let e2) = other.pattern {
+                let w1 = e1 - s1
+                let w2 = e2 - s2
+                if w1 != w2 { return w1 < w2 }
+                return s1 < s2
+            }
+            if case .single(let a) = pattern, case .single(let b) = other.pattern {
+                return a < b
+            }
+            return false
+        }
     }
 
     private let lock = NSLock()
@@ -86,6 +101,7 @@ public final class LocalSkipDatabase: @unchecked Sendable {
         for (seriesKey, seasonObj) in raw {
             guard let seasons = seasonObj as? [String: Any] else { continue }
             let normalizedSeries = normalize(seriesKey)
+            guard !normalizedSeries.isEmpty else { continue }
             var seasonMap: [String: [EpisodeMatcher]] = [:]
 
             for (seasonKey, episodeObj) in seasons {
@@ -100,8 +116,8 @@ public final class LocalSkipDatabase: @unchecked Sendable {
                     matchers.append(EpisodeMatcher(pattern: pattern, rule: rule))
                 }
 
-                // Sort so single episode takes precedence over range, which takes precedence over wildcard
-                matchers.sort { $0.priority > $1.priority }
+                // Deterministic precedence: single > range (narrowest first, then lower start) > wildcard.
+                matchers.sort { $0.isMoreSpecific(than: $1) }
                 seasonMap[normalizedSeason] = matchers
             }
 
@@ -120,58 +136,55 @@ public final class LocalSkipDatabase: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let normalizedSlug = normalize(seriesSlug)
-        let normalizedTitle = normalize(seriesTitle)
+        // Japanese-only or otherwise unnormalizable names normalize to "" and must never match.
+        var bases: [String] = []
+        for key in [normalize(seriesSlug), normalize(seriesTitle)] where !key.isEmpty && !bases.contains(key) {
+            bases.append(key)
+        }
+        guard !bases.isEmpty else { return nil }
 
-        // 1. Direct series lookup
-        var seriesKeysToTry: [String] = [normalizedSlug, normalizedTitle]
-
-        // 2. Season-suffixed series keys if season > 1 (e.g. "attack-on-titan-season-2")
-        if season > 1 {
-            seriesKeysToTry.append(contentsOf: generateSeasonSeriesVariants(base: normalizedSlug, season: season))
-            if !normalizedTitle.isEmpty && normalizedTitle != normalizedSlug {
-                seriesKeysToTry.append(contentsOf: generateSeasonSeriesVariants(base: normalizedTitle, season: season))
+        // 1. Exact season of the base series.
+        for base in bases {
+            if let times = resolve(seriesMap[base]?["\(season)"], season: season, episode: episode) {
+                return times
             }
         }
 
-        // Try candidate series keys
-        for (idx, seriesKey) in seriesKeysToTry.enumerated() {
-            guard let seasonMap = seriesMap[seriesKey] else { continue }
-
-            // If this is a season-specific alias (idx >= 2), also check season "1" since standalone
-            // season entries often index their episodes under season 1
-            var seasonKeysToTry: [String] = ["\(season)"]
-            if idx >= 2 {
-                seasonKeysToTry.append("1")
-            }
-            seasonKeysToTry.append(contentsOf: ["default", "*"])
-
-            for sKey in seasonKeysToTry {
-                guard let matchers = seasonMap[sKey] else { continue }
-                if let matched = matchers.first(where: { $0.matches(episode: episode) }) {
-                    let times = buildSkipTimes(from: matched.rule, season: season, episode: episode)
-                    if !times.isEmpty || matched.rule.noOpening {
-                        return times
+        // 2. Season-specific alias entries (e.g. "jujutsu-kaisen-2nd-season"): their season N, then "1"
+        //    (standalone season entries often index episodes under season 1), then their default rule.
+        if season > 1 {
+            for base in bases {
+                for alias in generateSeasonSeriesVariants(base: base, season: season) {
+                    guard let seasonMap = seriesMap[alias] else { continue }
+                    for sKey in ["\(season)", "1", "default"] {
+                        if let times = resolve(seasonMap[sKey], season: season, episode: episode) {
+                            return times
+                        }
                     }
                 }
             }
         }
 
-        // 3. Fallback: check if base season has a default or wildcard rule
-        if let seasonMap = seriesMap[normalizedSlug] ?? seriesMap[normalizedTitle] {
-            if let defaultMatchers = seasonMap["default"] ?? seasonMap["*"],
-               let matched = defaultMatchers.first(where: { $0.matches(episode: episode) }) {
-                let times = buildSkipTimes(from: matched.rule, season: season, episode: episode)
-                if !times.isEmpty || matched.rule.noOpening {
-                    return times
-                }
+        // 3. Default/wildcard rule of the base series.
+        for base in bases {
+            if let times = resolve(seriesMap[base]?["default"], season: season, episode: episode) {
+                return times
             }
         }
 
         return nil
     }
 
+    /// Best matching rule among `matchers` as skip times; nil when nothing matches or the rule is empty
+    /// (so the lookup can continue with less specific entries).
+    private func resolve(_ matchers: [EpisodeMatcher]?, season: Int, episode: Int) -> [SkipTime]? {
+        guard let matchers, let matched = matchers.first(where: { $0.matches(episode: episode) }) else { return nil }
+        let times = buildSkipTimes(from: matched.rule, season: season, episode: episode)
+        return (!times.isEmpty || matched.rule.noOpening) ? times : nil
+    }
+
     private func generateSeasonSeriesVariants(base: String, season: Int) -> [String] {
+        guard !base.isEmpty else { return [] }
         var variants: [String] = []
         variants.append("\(base)season\(season)")
         variants.append("\(base)s\(season)")
@@ -241,7 +254,7 @@ public final class LocalSkipDatabase: @unchecked Sendable {
 
     private func normalize(_ string: String) -> String {
         string.lowercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
+            .folding(options: .diacriticInsensitive, locale: nil)
             .replacingOccurrences(of: "[^a-z0-9]", with: "", options: .regularExpression)
     }
 
@@ -254,13 +267,17 @@ public final class LocalSkipDatabase: @unchecked Sendable {
     }
 
     private func parseEpisodePattern(_ key: String) -> EpisodeMatcher.Pattern? {
-        let cleaned = key.lowercased()
-            .replacingOccurrences(of: "folge", with: "")
-            .replacingOccurrences(of: "ep", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var cleaned = key.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
 
         if cleaned == "default" || cleaned == "*" || cleaned == "all" {
             return .wildcard
+        }
+
+        // Only a leading prefix ("folge 3", "episode3", "ep 3", "e3") is stripped, never text elsewhere.
+        for prefix in ["folge", "episode", "ep", "e"] where cleaned.hasPrefix(prefix) {
+            cleaned = String(cleaned.dropFirst(prefix.count))
+                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".:_")))
+            break
         }
 
         if cleaned.contains("-") {

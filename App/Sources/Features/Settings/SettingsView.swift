@@ -165,6 +165,9 @@ private struct PlaybackSection: View {
             Toggle("Intro-Erkennung (automatisch)", isOn: $settings.enableSkipDetection)
                 .tint(Theme.accent)
             if settings.enableSkipDetection {
+                Toggle("Online-Zeitmarken (AniSkip)", isOn: $settings.onlineSkipTimes)
+                    .tint(Theme.accent)
+                    .padding(.leading, 12)
                 Toggle("Intro automatisch überspringen", isOn: $settings.autoSkipIntro)
                     .tint(Theme.accent)
                     .padding(.leading, 12)
@@ -194,7 +197,7 @@ private struct PlaybackSection: View {
         } header: {
             Text("Wiedergabe")
         } footer: {
-            Text("Erkennt automatisch Intros und Outros und blendet einen passenden Sprung-Button ein. Die Zeitmarken stammen aus einer mitgelieferten Offline-Datenbank oder von dir („Eigene Intro-Zeiten“); ohne Zeitmarken wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
+            Text("Erkennt automatisch Intros und Outros und blendet einen passenden Sprung-Button ein. Die Zeitmarken stammen von dir („Eigene Intro-Zeiten“) oder – mit „Online-Zeitmarken“ – von AniSkip. Dafür sendet die App den Serientitel an AniList und die Folgennummer an AniSkip; deine eigenen Zeiten haben immer Vorrang. Ohne Zeitmarken wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
         }
     }
 }
@@ -316,11 +319,11 @@ private struct DownloadsSettingsSection: View {
     var body: some View {
         @Bindable var settings = settings
         Section {
-            Toggle("Downloads komprimieren (HEVC)", isOn: $settings.compressDownloads)
+            Toggle("Downloads komprimieren", isOn: $settings.compressDownloads)
                 .tint(Theme.accent)
 
             if settings.compressDownloads {
-                Picker("Qualität & Komprimierung", selection: $settings.downloadQuality) {
+                Picker("Komprimierung", selection: $settings.downloadQuality) {
                     ForEach(DownloadQuality.allCases) { quality in
                         Text(quality.title).tag(quality)
                     }
@@ -348,7 +351,7 @@ private struct DownloadsSettingsSection: View {
         } header: {
             Text("Downloads & Speicher")
         } footer: {
-            Text("Komprimiert heruntergeladene Videos mit hardwarebeschleunigtem H.265/HEVC direkt auf dem Gerät. Spart 50–75% Speicherplatz bei gleichbleibend flüssiger Wiedergabe.")
+            Text("Kodiert heruntergeladene MP4-Dateien nach dem Download auf dem Gerät neu, um Speicher zu sparen. „Hoch“ nutzt HEVC in Originalauflösung, die kleineren Stufen verkleinern auf 720p bzw. 480p. Wie viel das spart, hängt vom Video ab; wird die Datei nicht kleiner, bleibt das Original. HLS-Downloads werden nicht komprimiert.")
         }
         .confirmationDialog("Alle Downloads löschen?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
             Button("Alle Downloads löschen", role: .destructive) {

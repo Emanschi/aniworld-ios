@@ -54,13 +54,25 @@ struct HomeView: View {
     // MARK: Greeting
 
     private var greeting: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(greetingText)
-                .font(AppFont.display(32))
-                .foregroundStyle(.white)
-            Text("Was schauen wir heute?")
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSecondary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(greetingText)
+                    .font(AppFont.display(32))
+                    .foregroundStyle(.white)
+                Text("Was schauen wir heute?")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            NavigationLink(destination: ReleaseCalendarView()) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Theme.surfaceHigh))
+            }
+            .buttonStyle(PressableStyle())
+            .accessibilityLabel("Veröffentlichungskalender")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.screenPadding)

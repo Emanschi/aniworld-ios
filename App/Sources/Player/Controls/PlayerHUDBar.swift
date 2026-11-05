@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import MediaPlayer
 import UIKit
 import AniworldKit
@@ -100,9 +101,12 @@ struct SystemVolumeView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> HiddenMPVolumeView {
         let view = HiddenMPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
+        // Kept in the hierarchy (but invisible) so programmatic changes do not pop up the system volume HUD
+        // on top of our own indicator. Only the slider is needed, not the route button.
         view.alpha = 0.0001
         view.clipsToBounds = true
         view.isUserInteractionEnabled = false
+        view.showsRouteButton = false
         VolumeController.shared.scanSlider(in: view)
         return view
     }
@@ -120,13 +124,6 @@ final class VolumeController {
     func scanSlider(in view: UIView) {
         if let slider = view.subviews.first(where: { $0 is UISlider }) as? UISlider {
             self.volumeSlider = slider
-            return
-        }
-        for subview in view.subviews {
-            if let slider = subview as? UISlider {
-                self.volumeSlider = slider
-                return
-            }
         }
     }
 

@@ -166,7 +166,7 @@ struct DownloadsView: View {
                         Text("Gesehene Folgen automatisch löschen")
                             .font(.subheadline)
                             .foregroundStyle(.white)
-                        Text("Löscht eine Folge nach dem vollständigen Anschauen")
+                        Text("Löscht eine Folge, sobald du sie fast ganz gesehen und den Player verlassen hast")
                             .font(.caption)
                             .foregroundStyle(Theme.textSecondary)
                     }
@@ -270,7 +270,16 @@ struct DownloadsView: View {
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
                 case .active:
-                    ProgressBar(value: job.progress, height: 4)
+                    if job.isCompressing == true {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text("Wird komprimiert…")
+                                .font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                    } else {
+                        ProgressBar(value: job.progress, height: 4)
+                    }
                 case .failed:
                     Text(job.errorMessage ?? "Download fehlgeschlagen")
                         .font(.caption)
@@ -305,7 +314,7 @@ struct DownloadsView: View {
         var parts: [String] = []
         if let language = record.language { parts.append(language.shortName) }
         if record.sizeBytes > 0 { parts.append(DownloadFormat.bytes(record.sizeBytes)) }
-        if record.isCompressed == true { parts.append("HEVC") }
+        if let label = record.compressionLabel { parts.append(label) }
         return parts.joined(separator: " · ")
     }
 

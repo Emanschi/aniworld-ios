@@ -18,10 +18,18 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
         self.init(baseURL: baseURL, http: HTTPClient(), extractors: .default)
     }
 
-    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry) {
+    init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry,
+         skipTransport: HTTPFetching = URLSessionTransport()) {
         self.baseURL = baseURL
         self.http = http
         self.resolver = StreamResolver(http: http, extractors: extractors)
+        self.onlineSkip = OnlineSkipClient(transport: skipTransport)
+    }
+
+    private let onlineSkip: OnlineSkipClient
+
+    public func onlineSkipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
+        await onlineSkip.skipTimes(seriesTitle: seriesTitle, seriesSlug: seriesSlug, season: season, episode: episode)
     }
 
     private func url(_ path: String) -> URL { Support.absoluteURL(path, base: baseURL)! }
@@ -72,6 +80,53 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
         HomeParser.parse(try await http.getText(baseURL), baseURL: baseURL)
     }
 
+    public func genres() async throws -> [GenreRef] {
+        GenreParser.parseGenres(try await http.getText(baseURL))
+    }
+
+    /// All series of a genre, paging through `/genre/<slug>/<n>`. Cached per genre for 30 minutes, so
+    /// combining genres in the search filter only loads each genre once.
+    /// (`/animes` is not usable here: it lists every series only under its main genre.)
+    public func series(inGenre slug: String) async throws -> [SeriesSummary] {
+        let slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "/ \n\t")).lowercased()
+        guard !slug.isEmpty, !slug.contains("/") else { return [] }
+        return try await genreCache.value(for: slug) { try await self.pagedGenre(slug: slug) }
+    }
+
+    private let genreCache = KeyedCache<[SeriesSummary]>(lifetime: 30 * 60)
+
+    private func pagedGenre(slug: String) async throws -> [SeriesSummary] {
+        let firstHTML = try await http.getText(url("/genre/\(slug)"))
+        let maxPages = 50
+        var seen = Set<String>()
+        var out: [SeriesSummary] = []
+        for s in GenreParser.parseGenrePage(firstHTML, baseURL: baseURL) where seen.insert(s.slug).inserted {
+            out.append(s)
+        }
+        let last = min(GenreParser.lastPage(firstHTML, slug: slug), maxPages)
+        guard last >= 2 else { return out }
+        for page in 2...last {
+            try Task.checkCancellation()
+            let html = try await http.getText(url("/genre/\(slug)/\(page)"))
+            var added = 0
+            for s in GenreParser.parseGenrePage(html, baseURL: baseURL) where seen.insert(s.slug).inserted {
+                out.append(s)
+                added += 1
+            }
+            if added == 0 { break }
+        }
+        return out
+    }
+
+    public func allSeries() async throws -> [SeriesSummary] {
+        let list = GenreParser.parseSeriesList(try await http.getText(url("/animes-alphabet")), baseURL: baseURL)
+        return list.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    public func releaseCalendar() async throws -> [CalendarDay] {
+        CalendarParser.parse(try await http.getText(url("/animekalender")), baseURL: baseURL)
+    }
+
     /// Skip times come from the bundled offline database only (no network lookup).
     public func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
         LocalSkipDatabase.shared.findSkipTimes(
@@ -80,5 +135,25 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
             season: season,
             episode: episode
         ) ?? []
+    }
+}
+
+/// Caches expensive values per key for a while; concurrent callers for the same key share one load.
+actor KeyedCache<Value: Sendable> {
+    private let lifetime: TimeInterval
+    private var stored: [String: (value: Value, date: Date)] = [:]
+    private var loading: [String: Task<Value, Error>] = [:]
+
+    init(lifetime: TimeInterval) { self.lifetime = lifetime }
+
+    func value(for key: String, _ load: @escaping @Sendable () async throws -> Value) async throws -> Value {
+        if let hit = stored[key], Date().timeIntervalSince(hit.date) < lifetime { return hit.value }
+        if let running = loading[key] { return try await running.value }
+        let task = Task { try await load() }
+        loading[key] = task
+        defer { loading[key] = nil }
+        let value = try await task.value
+        stored[key] = (value, Date())
+        return value
     }
 }

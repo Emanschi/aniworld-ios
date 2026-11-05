@@ -18,9 +18,9 @@ enum DownloadQuality: String, Codable, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .high: return "Beste Qualität (1080p)"
-        case .medium: return "Speicher sparen (720p, ~50% kleiner)"
-        case .low: return "Kompakt (480p, ~75% kleiner)"
+        case .high: return "Hoch (HEVC, Originalauflösung)"
+        case .medium: return "Ausgewogen (720p, H.264)"
+        case .low: return "Kompakt (480p, H.264)"
         }
     }
 }
@@ -38,8 +38,10 @@ struct DownloadRecord: Codable, Identifiable, Hashable {
     var kind: DownloadKind
     var sizeBytes: Int64
     var createdAt: Date
-    /// Ob die Datei hardwarebeschleunigt komprimiert wurde (HEVC).
+    /// Ob die Datei nach dem Download neu kodiert (komprimiert) wurde.
     var isCompressed: Bool? = false
+    /// Kurzbezeichnung des Ergebnisses ("HEVC", "720p", "480p"), nil wenn nicht komprimiert.
+    var compressionLabel: String? = nil
 }
 
 enum DownloadJobStatus: String, Codable {
@@ -62,6 +64,8 @@ struct DownloadJob: Codable, Identifiable, Hashable {
     var triedHosters: [String]
     var errorMessage: String?
     var addedAt: Date
+    /// True while the finished file is being re-encoded (status stays `.active`, no record yet).
+    var isCompressing: Bool? = nil
 }
 
 /// What the UI shows for one episode.

@@ -92,11 +92,25 @@ enum SeriesParser {
         }
 
         var genres: [String] = []
+        var genreRefs: [GenreRef] = []
         for a in try doc.select(".genres a.genreButton, .genres a[itemprop=genre]").array() {
             let g = try a.text()
             // The site lists audio/subtitle availability ("Ger", "GerSub", ...) as pseudo-genres.
             if languageTags.contains(g.lowercased()) { continue }
             if !g.isEmpty, !genres.contains(g) { genres.append(g) }
+            if !g.isEmpty, let ref = GenreParser.genreRef(href: try a.attr("href"), name: g),
+               !genreRefs.contains(where: { $0.slug == ref.slug }) {
+                genreRefs.append(ref)
+            }
+        }
+
+        // FSK: `<div data-fsk="12" class="fsk fsk12">Ab: <span>12</span></div>`
+        var ageRating: Int?
+        if let fsk = try doc.select("[data-fsk]").first(), let v = Int(try fsk.attr("data-fsk").trimmingCharacters(in: .whitespaces)) {
+            ageRating = v
+        } else if let span = try doc.select(".fsk span").first(),
+                  let m = Support.match("(\\d+)", in: try span.text()) {
+            ageRating = Int(m[1])
         }
 
         func year(_ prop: String) -> Int? {
@@ -108,6 +122,7 @@ enum SeriesParser {
         let summary = SeriesSummary(slug: slug, title: title, url: url, description: description, coverURL: cover)
         return SeriesDetail(summary: summary, description: description, coverURL: cover, backdropURL: backdrop,
                             genres: genres, startYear: year("startDate"), endYear: year("endDate"),
-                            seasons: parseSeasons(html, slug: slug))
+                            seasons: parseSeasons(html, slug: slug),
+                            ageRating: ageRating, genreRefs: genreRefs)
     }
 }

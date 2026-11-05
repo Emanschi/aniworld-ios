@@ -10,3 +10,14 @@ App/Info.plist
 .DS_Store
 Package.resolved.orig
 .claude/
+
+# AI agent tooling (never commit)
+.gemini/
+GEMINI.md
+.cursor/
+.cursorrules
+.windsurf/
+.aider*
+.codex/
+.continue/
+.copilot/

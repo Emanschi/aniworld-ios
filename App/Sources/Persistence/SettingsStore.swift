@@ -9,8 +9,9 @@ final class SettingsStore {
     var languagePriority: [StreamLanguage] = StreamPreferences.default.languagePriority {
         didSet {
             let normalized = Self.normalize(languagePriority)
-            if normalized != languagePriority { languagePriority = normalized; return }
-            defaults.set(languagePriority.map(\.rawValue), forKey: Keys.languagePriority)
+            // Assigning inside didSet does not re-run it, so persist the normalized list here.
+            if normalized != languagePriority { languagePriority = normalized }
+            defaults.set(normalized.map(\.rawValue), forKey: Keys.languagePriority)
         }
     }
     var hosterPriority: [String] = StreamPreferences.default.hosterPriority {
@@ -31,6 +32,10 @@ final class SettingsStore {
     /// Automatic detection of intro/outro timestamps.
     var enableSkipDetection: Bool = true {
         didSet { defaults.set(enableSkipDetection, forKey: Keys.enableSkipDetection) }
+    }
+    /// Fetch intro/outro times online from AniSkip when no own times exist.
+    var onlineSkipTimes: Bool = true {
+        didSet { defaults.set(onlineSkipTimes, forKey: Keys.onlineSkipTimes) }
     }
     /// Automatically skip opening when timestamps are detected.
     var autoSkipIntro: Bool = false {
@@ -56,7 +61,7 @@ final class SettingsStore {
     var notifyAppUpdates: Bool = true {
         didSet { defaults.set(notifyAppUpdates, forKey: Keys.notifyAppUpdates) }
     }
-    /// Automatische Komprimierung heruntergeladener Folgen (HEVC / Hardware-Transcoding).
+    /// Komprimierung heruntergeladener MP4-Folgen (Neukodierung auf dem Gerät).
     var compressDownloads: Bool = true {
         didSet { defaults.set(compressDownloads, forKey: Keys.compressDownloads) }
     }
@@ -70,7 +75,10 @@ final class SettingsStore {
     }
     /// Downloads nur im WLAN durchführen, um mobiles Datenvolumen zu schonen.
     var downloadOnlyOnWiFi: Bool = true {
-        didSet { defaults.set(downloadOnlyOnWiFi, forKey: Keys.downloadOnlyOnWiFi) }
+        didSet {
+            defaults.set(downloadOnlyOnWiFi, forKey: Keys.downloadOnlyOnWiFi)
+            NotificationCenter.default.post(name: .downloadNetworkPolicyChanged, object: nil)
+        }
     }
 
     var streamPreferences: StreamPreferences {
@@ -87,6 +95,7 @@ final class SettingsStore {
         static let introSkipSeconds = "settings.introSkipSeconds"
         static let enableSkipDetection = "settings.enableSkipDetection"
         static let autoSkipIntro = "settings.autoSkipIntro"
+        static let onlineSkipTimes = "settings.onlineSkipTimes"
         static let autoSkipEnding = "settings.autoSkipEnding"
         static let autoNextOnOutro = "settings.autoNextOnOutro"
         static let verifyStreams = "settings.verifyStreams"
@@ -118,6 +127,9 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.enableSkipDetection) != nil {
             enableSkipDetection = defaults.bool(forKey: Keys.enableSkipDetection)
+        }
+        if defaults.object(forKey: Keys.onlineSkipTimes) != nil {
+            onlineSkipTimes = defaults.bool(forKey: Keys.onlineSkipTimes)
         }
         if defaults.object(forKey: Keys.autoSkipIntro) != nil {
             autoSkipIntro = defaults.bool(forKey: Keys.autoSkipIntro)
@@ -161,4 +173,9 @@ final class SettingsStore {
         }
         return result
     }
+}
+
+extension Notification.Name {
+    /// Posted when "Nur im WLAN herunterladen" changes, so running downloads can react immediately.
+    static let downloadNetworkPolicyChanged = Notification.Name("aniworld.downloadNetworkPolicyChanged")
 }

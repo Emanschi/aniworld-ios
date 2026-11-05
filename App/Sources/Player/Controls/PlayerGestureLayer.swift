@@ -10,7 +10,9 @@ struct PlayerGestureLayer: View {
     var onVerticalSwipe: ((_ isLeft: Bool, _ deltaFraction: Double) -> Void)? = nil
     var onSwipeEnd: (() -> Void)? = nil
 
-    @State private var dragStarted = false
+    /// nil = not decided yet for the current drag; true = vertical swipe, false = ignore (horizontal).
+    @State private var dragIsVertical: Bool?
+    @State private var dragOrigin: CGPoint?
     @State private var ignoreNextTapUntil: Date = .distantPast
 
     var body: some View {
@@ -24,17 +26,29 @@ struct PlayerGestureLayer: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 15)
                     .onChanged { value in
-                        dragStarted = true
                         ignoreNextTapUntil = Date().addingTimeInterval(0.3)
+                        // A new drag (SwiftUI does not call onEnded for cancelled gestures).
+                        if dragOrigin != value.startLocation {
+                            if dragIsVertical == true { onSwipeEnd?() }
+                            dragOrigin = value.startLocation
+                            dragIsVertical = nil
+                        }
+                        // Decide the direction once, at the start of the drag.
+                        if dragIsVertical == nil {
+                            dragIsVertical = abs(value.translation.height) > abs(value.translation.width)
+                        }
+                        guard dragIsVertical == true else { return }
                         let isLeft = value.startLocation.x < geo.size.width / 2
                         let deltaY = -(value.translation.height)
                         let fractionDelta = Double(deltaY / max(geo.size.height * 0.65, 100))
                         onVerticalSwipe?(isLeft, fractionDelta)
                     }
                     .onEnded { _ in
-                        dragStarted = false
+                        let wasVertical = dragIsVertical == true
+                        dragIsVertical = nil
+                        dragOrigin = nil
                         ignoreNextTapUntil = Date().addingTimeInterval(0.3)
-                        onSwipeEnd?()
+                        if wasVertical { onSwipeEnd?() }
                     }
             )
         }

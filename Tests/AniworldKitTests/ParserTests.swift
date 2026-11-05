@@ -86,6 +86,25 @@ final class SeriesParserTests: XCTestCase {
         XCTAssertTrue(d.genres.contains("Action"))
         XCTAssertFalse(d.genres.contains("GerSub"))
         XCTAssertEqual(d.seasons.map(\.number), [1, 2, 3, 4, 0])
+        XCTAssertEqual(d.ageRating, 12)
+        XCTAssertTrue(d.genreRefs.contains(GenreRef(slug: "action", name: "Action")))
+        XCTAssertEqual(d.genreRefs.map(\.name), d.genres)
+    }
+
+    func testAgeRatingFallbackAndOldJSONDecoding() throws {
+        let html = "<div class=\"series-title\"><h1><span>X</span></h1></div><div class=\"fsk fsk16\">Ab: <span>16</span></div>"
+        XCTAssertEqual(try SeriesParser.parseDetail(html, slug: "x").ageRating, 16)
+        XCTAssertNil(try SeriesParser.parseDetail("<div class=\"series-title\"><h1><span>X</span></h1></div>", slug: "x").ageRating)
+
+        // JSON stored by an older version has no ageRating/genreRefs keys.
+        let old = """
+        {"summary":{"slug":"x","title":"X","url":"https://aniworld.to/anime/stream/x","description":""},
+         "description":"d","genres":["Action"],"seasons":[{"number":1}]}
+        """
+        let decoded = try JSONDecoder().decode(SeriesDetail.self, from: Data(old.utf8))
+        XCTAssertNil(decoded.ageRating)
+        XCTAssertEqual(decoded.genreRefs, [])
+        XCTAssertEqual(decoded.genres, ["Action"])
     }
 
     func testDetailWithoutTitleThrows() {
@@ -158,5 +177,74 @@ final class HomeParserTests: XCTestCase {
     func testGarbageYieldsEmpty() {
         XCTAssertEqual(HomeParser.parse("<html><body>hi</body></html>"), [])
         XCTAssertEqual(HomeParser.parse(""), [])
+    }
+}
+
+final class GenreParserTests: XCTestCase {
+    func testGenresFromHomePage() throws {
+        let genres = GenreParser.parseGenres(try Fixture.text("home_genres.html"))
+        XCTAssertGreaterThan(genres.count, 20)
+        XCTAssertTrue(genres.contains(GenreRef(slug: "action", name: "Action")))
+        XCTAssertTrue(genres.contains(GenreRef(slug: "actionkomoedie", name: "Actionkomödie")))
+        XCTAssertFalse(genres.contains { ["ger", "gersub", "engsub", "eng", "gerdub"].contains($0.slug) })
+        XCTAssertEqual(Set(genres.map(\.slug)).count, genres.count)
+    }
+
+    func testGenreRefRejectsPaginationAndLanguages() {
+        XCTAssertNil(GenreParser.genreRef(href: "https://aniworld.to/genre/action/2", name: "2"))
+        XCTAssertNil(GenreParser.genreRef(href: "/genre/gersub", name: "GerSub"))
+        XCTAssertNil(GenreParser.genreRef(href: "/anime/stream/x", name: "x"))
+        XCTAssertEqual(GenreParser.genreRef(href: "/genre/boys-love", name: " Boys Love ")?.name, "Boys Love")
+    }
+
+    func testGenrePage() throws {
+        let html = try Fixture.text("genre_action.html")
+        let items = GenreParser.parseGenrePage(html)
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(items[0].slug, "compass-20-animation-project")
+        XCTAssertEqual(items[0].title, "#Compass 2.0 Animation Project")
+        XCTAssertEqual(items[0].url.absoluteString, "https://aniworld.to/anime/stream/compass-20-animation-project")
+        XCTAssertEqual(items[0].coverURL?.absoluteString.hasPrefix("https://aniworld.to/public/img/cover/compass-20"), true)
+        XCTAssertEqual(GenreParser.lastPage(html, slug: "action"), 37)
+        XCTAssertEqual(GenreParser.lastPage("<html></html>", slug: "action"), 1)
+    }
+
+    func testSeriesLists() throws {
+        for name in ["animes.html", "animes_alphabet.html"] {
+            let items = GenreParser.parseSeriesList(try Fixture.text(name))
+            XCTAssertFalse(items.isEmpty, name)
+            XCTAssertEqual(Set(items.map(\.slug)).count, items.count)
+            XCTAssertTrue(items.allSatisfy { $0.url.absoluteString.hasPrefix("https://aniworld.to/anime/stream/") })
+            XCTAssertTrue(items.allSatisfy { !$0.title.isEmpty })
+        }
+        let first = try XCTUnwrap(GenreParser.parseSeriesList(try Fixture.text("animes.html")).first)
+        XCTAssertEqual(first.slug, "demons-ascension")
+        XCTAssertEqual(first.title, "Demon's Ascension")
+    }
+
+    func testGarbageYieldsEmpty() {
+        XCTAssertEqual(GenreParser.parseGenres(""), [])
+        XCTAssertEqual(GenreParser.parseGenrePage("<html></html>"), [])
+        XCTAssertEqual(GenreParser.parseSeriesList("<html></html>"), [])
+    }
+}
+
+final class CalendarParserTests: XCTestCase {
+    func testParsesDays() throws {
+        let days = CalendarParser.parse(try Fixture.text("animekalender.html"))
+        XCTAssertEqual(days.count, 2)
+        XCTAssertEqual(days[0].title, "Donnerstag, 05.11.2026 (heute)")
+        let first = try XCTUnwrap(days[0].entries.first)
+        XCTAssertEqual(first.series.slug, "fx-fighter-kurumichan")
+        XCTAssertEqual(first.series.title, "FX Fighter KURUMICHAN")
+        XCTAssertEqual(first.series.url.absoluteString, "https://aniworld.to/anime/stream/fx-fighter-kurumichan")
+        XCTAssertEqual(first.info, "S01E06 · 13:40")
+        XCTAssertNotNil(first.series.coverURL)
+        XCTAssertEqual(Set(days.flatMap(\.entries).map(\.id)).count, days.flatMap(\.entries).count)
+    }
+
+    func testGarbageYieldsEmpty() {
+        XCTAssertEqual(CalendarParser.parse(""), [])
+        XCTAssertEqual(CalendarParser.parse("<section class=\"calendarList\"><h3>Montag</h3></section>"), [])
     }
 }

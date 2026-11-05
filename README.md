@@ -14,9 +14,10 @@ Das Projekt ist ein Port des Python-Tools [dxmoc/aniworld-cli](https://github.co
 - Hoster VOE und Vidmoly, mit automatischem Fallback und Stream-Prüfung vor dem Abspielen
 - Eigener Player im App-Design: Scrubber, Geschwindigkeit, Doppeltipp zum Spulen, Bild-in-Bild,
   AirPlay und Wiedergabe im Hintergrund
-- Intro, Rückblick und Outro überspringen (Offline-Datenbank oder eigene Zeiten pro Folge/Staffel),
+- Intro, Rückblick und Outro überspringen (Zeitmarken online von AniSkip oder eigene Zeiten pro Folge/Staffel),
   auf Wunsch automatisch; mit Autoplay geht es nach dem Outro direkt zur nächsten Folge
 - Downloads: einzelne Folgen oder ganze Staffeln herunterladen und offline ansehen (nur lokal)
+- Altersfreigabe (FSK), Genre-Filter in der Suche, Liste aller Animes A–Z und Kalender für neue Folgen
 - Weiterschauen-Verlauf und Favoriten
 - Benachrichtigungen bei neuen Folgen deiner Favoriten (lokal, ohne Server)
 - Optionaler Sync von Favoriten, Verlauf und Fortschritt über einen Ordner in deinem iCloud Drive
@@ -84,7 +85,7 @@ Package.swift            Swift-Package AniworldKit (Scraping, Extraktoren, Resol
 Sources/AniworldKit/     Kernlogik, plattformunabhängig
 Tests/                   Tests mit HTML-/JSON-Fixtures
 App/Sources/             SwiftUI-App (Features, Design, Player, Persistenz)
-App/Resources/           Assets, Skip-Datenbank, Patchnotes, Lizenztexte
+App/Resources/           Assets, Patchnotes, Lizenztexte
 project.yml              XcodeGen-Spezifikation
 scripts/                 build-ipa.sh, make_icon.py, update-altstore-source.py
 altstore-source.json     Vorlage der AltStore/SideStore-Quelle
