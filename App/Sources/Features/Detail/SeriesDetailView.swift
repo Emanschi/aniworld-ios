@@ -9,6 +9,7 @@ struct SeriesDetailView: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(PlaybackCoordinator.self) private var playback
     @Environment(DownloadManager.self) private var downloads
+    @Environment(WatchStatsStore.self) private var stats
     @State private var downloadPrompt: EpisodeRef?
     @State private var confirmDeleteSeason = false
     @State private var confirmDeleteSeries = false
@@ -111,6 +112,7 @@ struct SeriesDetailView: View {
         }
         .task(id: series.slug) {
             await vm.load(series: series, preferredSeason: lastWatched?.episode.season, service: service)
+            if let detail = vm.detail { stats.noteSeries(detail) }
         }
     }
 

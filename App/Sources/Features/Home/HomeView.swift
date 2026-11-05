@@ -28,13 +28,17 @@ struct HomeView: View {
     @Environment(\.aniworld) private var service
     @Environment(LibraryStore.self) private var library
     @Environment(PlaybackCoordinator.self) private var playback
+    @Environment(WatchStatsStore.self) private var stats
     @State private var vm = HomeViewModel()
+    @State private var recapCandidate: StatsPeriod?
+    @State private var recapPeriod: StatsPeriod?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     greeting
+                    recapBanner
                     continueSection
                     favoritesSection
                     remoteSections
@@ -49,6 +53,26 @@ struct HomeView: View {
             }
         }
         .task { await vm.load(service: service) }
+        .onAppear { recapCandidate = RecapPrompt.candidate(store: stats) }
+        .fullScreenCover(item: $recapPeriod) { (period: StatsPeriod) in
+            RecapStoryView(period: period, stats: stats.stats(for: period)) { recapPeriod = nil }
+        }
+    }
+
+    // MARK: Monthly recap
+
+    @ViewBuilder
+    private var recapBanner: some View {
+        if let period = recapCandidate {
+            RecapBanner(period: period, onOpen: {
+                RecapPrompt.markSeen(period)
+                recapCandidate = nil
+                recapPeriod = period
+            }, onDismiss: {
+                RecapPrompt.markSeen(period)
+                withAnimation(.easeInOut(duration: 0.25)) { recapCandidate = nil }
+            })
+        }
     }
 
     // MARK: Greeting

@@ -1,104 +1,186 @@
-# AniWorld iOS
+<div align="center">
 
-Nativer iOS-Client (SwiftUI, iOS 17+) zum Streamen von Anime von [aniworld.to](https://aniworld.to).
-Das Projekt ist ein Port des Python-Tools [dxmoc/aniworld-cli](https://github.com/dxmoc/aniworld-cli)
-(GPL-3.0) auf iPhone und iPad. Vielen Dank an die Autoren des Originals.
+<img src="App/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png" width="120" alt="AniWorld-App-Icon">
 
-> Inoffizielles Fan-Projekt, nicht mit aniworld.to verbunden.
+# AniWorld für iOS
+
+**Anime von aniworld.to als native iPhone- und iPad-App, mit eigenem Player, Downloads und ohne Account.**
+
+[![Release](https://img.shields.io/github/v/release/Emanschi/aniworld-ios?label=Version&color=8B5CF6)](https://github.com/Emanschi/aniworld-ios/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/Emanschi/aniworld-ios/build.yml?branch=main&label=Build)](https://github.com/Emanschi/aniworld-ios/actions/workflows/build.yml)
+![iOS 17+](https://img.shields.io/badge/iOS-17%2B-black?logo=apple)
+![Swift](https://img.shields.io/badge/SwiftUI-Swift%205-F05138?logo=swift&logoColor=white)
+[![Lizenz: GPL-3.0](https://img.shields.io/badge/Lizenz-GPL--3.0-blue)](LICENSE)
+
+[**Herunterladen**](https://github.com/Emanschi/aniworld-ios/releases/latest) · [Installation](#installation) · [Funktionen](#funktionen) · [FAQ](#faq) · [Selbst bauen](#selbst-bauen)
+
+</div>
+
+> [!NOTE]
+> Inoffizielles Fan-Projekt, nicht mit aniworld.to verbunden. Port des Python-Tools
+> [dxmoc/aniworld-cli](https://github.com/dxmoc/aniworld-cli). Danke an die Autoren des Originals.
 
 ## Funktionen
 
-- Suche nach Serien und Filmen, Startseite mit neuen und beliebten Serien
-- Serien, Staffeln, Episoden und Filme
-- Sprachwahl: Deutsch (GerDub), Deutsch mit Untertiteln (GerSub), Englisch mit Untertiteln (EngSub)
-- Hoster VOE und Vidmoly, mit automatischem Fallback und Stream-Prüfung vor dem Abspielen
-- Eigener Player im App-Design: Scrubber, Geschwindigkeit, Doppeltipp zum Spulen, Bild-in-Bild,
-  AirPlay und Wiedergabe im Hintergrund
-- Intro, Rückblick und Outro überspringen (Zeitmarken online von AniSkip oder eigene Zeiten pro Folge/Staffel),
-  auf Wunsch automatisch; mit Autoplay geht es nach dem Outro direkt zur nächsten Folge
-- Downloads: einzelne Folgen oder ganze Staffeln herunterladen und offline ansehen (nur lokal)
-- Altersfreigabe (FSK), Genre-Filter in der Suche, Liste aller Animes A–Z und Kalender für neue Folgen
-- Weiterschauen-Verlauf und Favoriten
-- Benachrichtigungen bei neuen Folgen deiner Favoriten (lokal, ohne Server)
-- Optionaler Sync von Favoriten, Verlauf und Fortschritt über einen Ordner in deinem iCloud Drive
-- Hinweis auf neue Versionen und „Was ist neu“ nach jedem Update
-- Kein Account, keine eigenen Server: alles bleibt auf deinem Gerät bzw. in deinem iCloud Drive
+| | |
+|---|---|
+| 🔎 **Entdecken** | Suche mit Genre-Filter, alle Animes von A–Z, Startseite mit neuen und beliebten Serien, Kalender für neue Folgen, Altersfreigabe (FSK) |
+| 🎬 **Eigener Player** | Scrubber, Geschwindigkeit, Doppeltipp zum Spulen, Wischen für Helligkeit und Lautstärke, Bild-in-Bild, AirPlay, Hintergrundwiedergabe |
+| ⏭️ **Intro & Outro überspringen** | Zeitmarken online von [AniSkip](https://aniskip.com) (abschaltbar) oder eigene Zeiten pro Folge/Staffel, auf Wunsch automatisch; mit Autoplay direkt zur nächsten Folge |
+| 🌐 **Sprachen & Hoster** | GerDub, GerSub, EngSub; VOE und Vidmoly mit automatischem Fallback und Stream-Prüfung |
+| ⬇️ **Downloads** | Folgen oder ganze Staffeln offline speichern, nur im WLAN, gesehene Folgen automatisch löschen, optional platzsparend komprimiert |
+| ❤️ **Bibliothek** | Favoriten, Weiterschauen-Verlauf mit Fortschritt, Benachrichtigung bei neuen Folgen deiner Favoriten |
+| ☁️ **Sync (optional)** | Favoriten, Verlauf und Fortschritt über einen Ordner in deinem iCloud Drive zwischen iPhone und iPad abgleichen |
+| 📊 **Statistiken** | Watchtime, täglicher Streak mit Flammen, Top-Serien und -Genres, Sprachen, Lieblingstage und Fun Facts pro Monat, dazu ein Monatsrückblick zum Durchwischen (über iCloud synchronisiert) |
+| 🔔 **Updates** | Hinweis auf neue Versionen und „Was ist neu“ nach jedem Update |
+
+**Datenschutz:** Kein Account, keine eigenen Server, kein Tracking. Alles bleibt auf deinem Gerät
+bzw. in deinem eigenen iCloud Drive. Die App spricht nur mit aniworld.to, den Hostern, der AniSkip-API
+(Zeitmarken, abschaltbar) und für den Update-Hinweis mit der GitHub-API.
 
 ## Installation
 
-Die App ist nicht im App Store. Du installierst eine **unsignierte IPA**, die beim Installieren
-mit deiner Apple-ID signiert wird.
+Die App ist nicht im App Store. Du lädst eine **IPA** herunter und installierst sie mit einem
+Sideloading-Werkzeug, das sie mit deiner (kostenlosen) Apple-ID signiert.
 
-1. Lade `AniWorld.ipa` aus dem [neuesten Release](../../releases/latest) herunter.
-2. Installiere sie mit einem dieser Werkzeuge:
-   - **Impactor** (Linux, Windows, macOS): iPhone per USB anschließen, IPA in Impactor ziehen,
-     mit deiner Apple-ID anmelden, installieren. Unter Linux muss `usbmuxd` laufen.
-   - **Sideloadly** (Windows, macOS): IPA in Sideloadly ziehen, Apple-ID eingeben, installieren.
-   - **AltStore / SideStore** (mit automatischer Erneuerung): Quelle hinzufügen
-     `https://github.com/Emanschi/aniworld-ios/releases/latest/download/altstore-source.json`
-     und AniWorld installieren.
-   - **TrollStore:** IPA öffnen und in TrollStore installieren (nur auf unterstützten iOS-Versionen).
-3. Auf dem iPhone unter *Einstellungen → Allgemein → VPN & Geräteverwaltung* deiner Apple-ID
-   vertrauen. Ab iOS 16 zusätzlich *Einstellungen → Datenschutz & Sicherheit → Entwicklermodus*
-   aktivieren (Neustart nötig).
+**1. IPA herunterladen:** `AniWorld.ipa` aus dem [neuesten Release](https://github.com/Emanschi/aniworld-ios/releases/latest).
 
-**Update:** Neue IPA einfach über die alte installieren (gleiches Werkzeug, gleiche Apple-ID).
-Favoriten, Verlauf und Downloads bleiben erhalten.
+**2. Installieren**, je nach Gerät:
 
-**Wichtig:** Die GitHub-App allein kann keine IPA installieren. Mit einer kostenlosen Apple-ID läuft
-die Signatur nach 7 Tagen ab und muss erneuert werden (AltStore/SideStore machen das automatisch).
+| Werkzeug | Läuft auf | So geht's |
+|---|---|---|
+| [AltStore](https://altstore.io) / [SideStore](https://sidestore.io) | iPhone (+ einmalig PC) | Quelle hinzufügen, AniWorld installieren. Updates und Signatur-Erneuerung laufen danach in der App. |
+| [Impactor](https://github.com/khcrysalis/Impactor) | Linux, Windows, macOS | iPhone per USB anschließen, IPA hineinziehen, mit Apple-ID anmelden. Unter Linux muss `usbmuxd` laufen. |
+| [Sideloadly](https://sideloadly.io) | Windows, macOS | IPA hineinziehen, Apple-ID eingeben, *Start*. |
+| [TrollStore](https://github.com/opa334/TrollStore) | iPhone | IPA öffnen und installieren (nur auf unterstützten iOS-Versionen, keine 7-Tage-Grenze). |
 
-**iCloud-Sync einrichten (optional):** Beim ersten Start fragt die App nach einem Ordner. Lege im
-Dialog in iCloud Drive einen Ordner an (z. B. „AniWorld“), öffne ihn und tippe auf „Öffnen“. Auf
-weiteren Geräten denselben Ordner wählen. Der oberste iCloud-Drive-Ordner selbst lässt sich nicht
-auswählen.
+AltStore/SideStore-Quelle:
+
+```
+https://github.com/Emanschi/aniworld-ios/releases/latest/download/altstore-source.json
+```
+
+**3. Auf dem iPhone freigeben:**
+*Einstellungen → Allgemein → VPN & Geräteverwaltung* → deiner Apple-ID vertrauen. Ab iOS 16
+zusätzlich *Einstellungen → Datenschutz & Sicherheit → Entwicklermodus* einschalten (Neustart).
+
+**Update:** Die neue IPA einfach über die alte installieren (gleiches Werkzeug, gleiche Apple-ID).
+Favoriten, Verlauf und Downloads bleiben erhalten. Die App weist dich auf neue Versionen hin.
+
+<details>
+<summary><b>iCloud-Sync einrichten (optional)</b></summary>
+
+Beim ersten Start fragt die App nach einem Ordner. Lege im Dialog in iCloud Drive einen Ordner an
+(z. B. „AniWorld“), öffne ihn und tippe auf „Öffnen“. Auf iPad und weiteren Geräten denselben Ordner
+wählen. Der oberste iCloud-Drive-Ordner selbst lässt sich nicht auswählen. Die Daten liegen in einem
+versteckten Unterordner und werden automatisch abgeglichen. Später änderbar unter *Einstellungen*.
+
+</details>
+
+## FAQ
+
+<details>
+<summary><b>Die App startet nach einer Woche nicht mehr.</b></summary>
+
+Mit einer kostenlosen Apple-ID ist die Signatur nur 7 Tage gültig. Installiere die IPA einfach neu
+(deine Daten bleiben erhalten) oder nutze AltStore/SideStore, die die Signatur automatisch erneuern.
+
+</details>
+
+<details>
+<summary><b>„Nicht vertrauenswürdiger Entwickler“ beim Öffnen</b></summary>
+
+*Einstellungen → Allgemein → VPN & Geräteverwaltung* → deine Apple-ID → *Vertrauen*.
+
+</details>
+
+<details>
+<summary><b>Kann ich die IPA direkt mit der GitHub-App installieren?</b></summary>
+
+Nein. iOS installiert nur signierte Apps, dafür brauchst du eines der Werkzeuge oben.
+
+</details>
+
+<details>
+<summary><b>Eine Folge lädt nicht oder bricht ab.</b></summary>
+
+Im Player über das Menü einen anderen Hoster oder eine andere Sprache wählen. Die App probiert
+Hoster automatisch der Reihe nach durch; manchmal ist ein Hoster vorübergehend nicht erreichbar.
+
+</details>
+
+<details>
+<summary><b>„Intro überspringen“ fehlt oder springt falsch.</b></summary>
+
+Die Zeitmarken kommen von der AniSkip-Community und gibt es nicht für jede Folge. Fehlen sie oder
+passen sie nicht, kannst du Intro und Outro im Player selbst festlegen (für eine Folge oder die ganze
+Staffel); eigene Zeiten haben immer Vorrang.
+
+</details>
+
+<details>
+<summary><b>Kommen Benachrichtigungen zuverlässig?</b></summary>
+
+Die App prüft beim Öffnen und, wenn iOS es zulässt, im Hintergrund. Sideloadete Apps bekommen von
+iOS nur selten Hintergrundzeit, daher kommen Benachrichtigungen teils erst beim nächsten Öffnen.
+
+</details>
 
 ## Selbst bauen
 
-### Mit GitHub Actions (kein Mac nötig)
+**Ohne Mac (GitHub Actions):** Ein Push auf `main` oder ein manueller Start über *Run workflow*
+baut eine unsignierte IPA (Artefakt `AniWorld-ipa`). Ein Tag `vX.Y.Z` erstellt zusätzlich ein
+Release mit IPA und AltStore-Quelle. Entwickelt wird auf `dev`; `dev` und Pull Requests haben
+keine eigene Pipeline.
 
-Ein Push auf `main` (oder ein manueller Start über *Run workflow*) baut die IPA und lädt sie als
-Artefakt `AniWorld-ipa` hoch. Andere Branches (z. B. `dev`) und Pull Requests haben keine Pipeline, um Actions-Minuten zu sparen; gearbeitet wird auf `dev`, gebaut erst nach dem Merge in `main`. Ein Tag wie `v0.2.0` (`git tag v0.2.0 && git push origin v0.2.0`) erzeugt zusätzlich ein
-GitHub-Release mit `AniWorld.ipa` und einer passenden `altstore-source.json`.
-
-### Lokal auf dem Mac
-
-Voraussetzungen: Xcode (aktuell) und [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+**Auf dem Mac:** Xcode und [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 brew install xcodegen
-./scripts/build-ipa.sh        # erzeugt build/AniWorld.ipa (unsigniert)
-# oder zum Entwickeln in Xcode:
-xcodegen generate && open AniworldIOS.xcodeproj
+./scripts/build-ipa.sh                              # build/AniWorld.ipa (unsigniert)
+xcodegen generate && open AniworldIOS.xcodeproj     # zum Entwickeln in Xcode
 ```
 
-Der Kern (`AniworldKit`) lässt sich auch auf Linux/macOS testen:
+**Kern testen (Linux/macOS):** Die Scraping-Logik `AniworldKit` ist ein plattformunabhängiges
+Swift-Package.
 
 ```sh
 swift build && swift test
 ```
 
-## Projektstruktur
+<details>
+<summary><b>Projektstruktur</b></summary>
 
 ```
-Package.swift            Swift-Package AniworldKit (Scraping, Extraktoren, Resolver)
+Package.swift            Swift-Package AniworldKit (Scraping, Extraktoren, Resolver, Skip-Zeiten)
 Sources/AniworldKit/     Kernlogik, plattformunabhängig
 Tests/                   Tests mit HTML-/JSON-Fixtures
-App/Sources/             SwiftUI-App (Features, Design, Player, Persistenz)
+App/Sources/             SwiftUI-App (Features, Player, Downloads, Sync, Benachrichtigungen, Updates)
 App/Resources/           Assets, Patchnotes, Lizenztexte
 project.yml              XcodeGen-Spezifikation
-scripts/                 build-ipa.sh, make_icon.py, update-altstore-source.py
 altstore-source.json     Vorlage der AltStore/SideStore-Quelle
+scripts/                 IPA-Build, Icon, AltStore-Quelle
 .github/workflows/       CI: Tests, IPA-Build, Release
 ```
 
+</details>
+
+## Mitmachen
+
+Fehler und Ideen gerne als [Issue](https://github.com/Emanschi/aniworld-ios/issues). Pull Requests
+bitte gegen `dev`. Für Beiträge mit KI-Agents gelten die Regeln in [AGENTS.md](AGENTS.md)
+(u. a. Lizenzhinweise und Patchnotes bei jeder sichtbaren Änderung).
+
 ## Haftungsausschluss
 
-Dieses Projekt hostet keine Inhalte. Es verlinkt und lädt ausschließlich Seiten und Streams von
-aniworld.to und den dort eingebundenen Hostern. Für die Inhalte sind deren Betreiber verantwortlich.
-Nutze die App verantwortungsvoll und beachte das in deinem Land geltende Recht, insbesondere das
-Urheberrecht. Die Nutzung erfolgt auf eigene Verantwortung.
+Dieses Projekt hostet, speichert und verbreitet keine Inhalte. Es ruft ausschließlich öffentlich
+erreichbare Seiten von aniworld.to und den dort eingebundenen Hostern auf; für die Inhalte sind deren
+Betreiber verantwortlich. Keine Verbindung zu aniworld.to, den Hostern oder Apple. Beachte das in
+deinem Land geltende Recht, insbesondere das Urheberrecht. Die Nutzung erfolgt auf eigene
+Verantwortung.
 
 ## Lizenz
 
-[GPL-3.0](LICENSE), wie das Original [aniworld-cli](https://github.com/dxmoc/aniworld-cli). Hinweise zu verwendeter Fremdsoftware: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[GPL-3.0](LICENSE), wie das Original [aniworld-cli](https://github.com/dxmoc/aniworld-cli).
+Verwendete Fremdsoftware und Daten (u. a. SwiftSoup, AniSkip-Zeitmarken):
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

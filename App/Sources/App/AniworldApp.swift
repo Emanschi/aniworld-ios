@@ -24,6 +24,7 @@ struct AniworldApp: App {
                 .environment(env.sync)
                 .environment(env.downloads)
                 .environment(env.watcher)
+                .environment(env.stats)
                 .environment(\.aniworld, env.service)
                 .preferredColorScheme(.dark)
                 .onChange(of: scenePhase) { _, newPhase in
@@ -50,20 +51,23 @@ struct AppEnvironment {
     let sync: LibrarySyncService
     let downloads: DownloadManager
     let watcher: EpisodeWatcher
+    let stats: WatchStatsStore
 
     static func live() -> AppEnvironment {
         make(service: AniworldClient())
     }
 
-    static func make(service: AniworldService) -> AppEnvironment {
+    static func make(service: AniworldService, stats: WatchStatsStore? = nil) -> AppEnvironment {
+        let stats: WatchStatsStore = stats ?? WatchStatsStore()
         let library = LibraryStore()
         let settings = SettingsStore()
         return AppEnvironment(
             service: service, library: library, settings: settings,
             playback: PlaybackCoordinator(service: service, library: library, settings: settings),
-            sync: LibrarySyncService(library: library),
+            sync: LibrarySyncService(library: library, stats: stats),
             downloads: DownloadManager(service: service, settings: settings, library: library),
-            watcher: EpisodeWatcher(service: service, library: library, settings: settings)
+            watcher: EpisodeWatcher(service: service, library: library, settings: settings),
+            stats: stats
         )
     }
 }
