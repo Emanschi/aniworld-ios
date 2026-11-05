@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.2.1",
+    "date": "2026-11-05",
+    "notes": [
+      "Intro- und Outro-Sprünge funktionieren jetzt zuverlässig über alle Staffeln hinweg.",
+      "Präzise Skip-Zeiten für lange Serien wie One Piece, Naruto, Bleach, Hunter x Hunter und Death Note korrigiert.",
+      "Die Offline-Datenbank für Intro- und Outro-Zeitmarken wurde auf über 2.500 Anime erweitert und bereinigt."
+    ]
+  },
+  {
     "version": "0.2.0",
     "date": "2026-11-04",
     "notes": [

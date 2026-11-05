@@ -62,4 +62,64 @@ final class LocalSkipDatabaseTests: XCTestCase {
         let unknown = db.findSkipTimes(seriesSlug: "unknown-anime", seriesTitle: "Unknown", season: 1, episode: 1)
         XCTAssertNil(unknown)
     }
+
+    func testSeasonVariantFallbackResolution() {
+        let jsonString = """
+        {
+          "jujutsu-kaisen": {
+            "1": {
+              "1": { "op": { "start": 54.7, "end": 145.1 } }
+            }
+          },
+          "jujutsu-kaisen-2nd-season": {
+            "1": {
+              "1": { "op": { "start": 224.0, "end": 314.0 } }
+            }
+          }
+        }
+        """
+
+        let db = LocalSkipDatabase(jsonData: Data(jsonString.utf8))
+
+        // When queried as base slug with season 2, resolves to jujutsu-kaisen-2nd-season
+        let s2 = db.findSkipTimes(seriesSlug: "jujutsu-kaisen", seriesTitle: "Jujutsu Kaisen", season: 2, episode: 1)
+        XCTAssertNotNil(s2)
+        XCTAssertEqual(s2?.first(where: { $0.skipType.isOpening })?.interval.startTime, 224.0)
+    }
+
+    func testBundledDatabaseIntegrity() throws {
+        let dbURL = URL(fileURLWithPath: "/root/aniworld-ios/App/Resources/skip_database.json")
+        let data = try Data(contentsOf: dbURL)
+        let db = LocalSkipDatabase(jsonData: data)
+
+        // Test Attack on Titan Season 2
+        let aotS2 = db.findSkipTimes(seriesSlug: "attack-on-titan", seriesTitle: "Attack on Titan", season: 2, episode: 1)
+        XCTAssertNotNil(aotS2)
+        XCTAssertEqual(aotS2?.first(where: { $0.skipType.isOpening })?.interval.startTime, 167.7)
+
+        // Test One Piece Episode 100
+        let op100 = db.findSkipTimes(seriesSlug: "one-piece", seriesTitle: "One Piece", season: 1, episode: 100)
+        XCTAssertNotNil(op100)
+        XCTAssertEqual(op100?.first(where: { $0.skipType.isOpening })?.interval.startTime, 1.0)
+
+        // Test One Piece Episode 300
+        let op300 = db.findSkipTimes(seriesSlug: "one-piece", seriesTitle: "One Piece", season: 1, episode: 300)
+        XCTAssertNotNil(op300)
+        XCTAssertEqual(op300?.first(where: { $0.skipType.isOpening })?.interval.startTime, 14.9)
+
+        // Test Naruto Shippuden Episode 25
+        let ns25 = db.findSkipTimes(seriesSlug: "naruto-shippuden", seriesTitle: "Naruto: Shippuden", season: 1, episode: 25)
+        XCTAssertNotNil(ns25)
+        XCTAssertEqual(ns25?.first(where: { $0.skipType.isOpening })?.interval.startTime, 336.0)
+
+        // Test Death Note Episode 1 (Opening starts at 3m46s after Shinigami realm prologue)
+        let dn1 = db.findSkipTimes(seriesSlug: "death-note", seriesTitle: "Death Note", season: 1, episode: 1)
+        XCTAssertNotNil(dn1)
+        XCTAssertEqual(dn1?.first(where: { $0.skipType.isOpening })?.interval.startTime, 226.0)
+
+        // Test Death Note Episode 5 (Standard opening at 1m35s after cold open)
+        let dn5 = db.findSkipTimes(seriesSlug: "death-note", seriesTitle: "Death Note", season: 1, episode: 5)
+        XCTAssertNotNil(dn5)
+        XCTAssertEqual(dn5?.first(where: { $0.skipType.isOpening })?.interval.startTime, 95.0)
+    }
 }

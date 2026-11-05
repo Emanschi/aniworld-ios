@@ -120,11 +120,32 @@ public final class LocalSkipDatabase: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let keysToTry = [normalize(seriesSlug), normalize(seriesTitle)]
-        for seriesKey in keysToTry {
+        let normalizedSlug = normalize(seriesSlug)
+        let normalizedTitle = normalize(seriesTitle)
+
+        // 1. Direct series lookup
+        var seriesKeysToTry: [String] = [normalizedSlug, normalizedTitle]
+
+        // 2. Season-suffixed series keys if season > 1 (e.g. "attack-on-titan-season-2")
+        if season > 1 {
+            seriesKeysToTry.append(contentsOf: generateSeasonSeriesVariants(base: normalizedSlug, season: season))
+            if !normalizedTitle.isEmpty && normalizedTitle != normalizedSlug {
+                seriesKeysToTry.append(contentsOf: generateSeasonSeriesVariants(base: normalizedTitle, season: season))
+            }
+        }
+
+        // Try candidate series keys
+        for (idx, seriesKey) in seriesKeysToTry.enumerated() {
             guard let seasonMap = seriesMap[seriesKey] else { continue }
 
-            let seasonKeysToTry = ["\(season)", "default", "*"]
+            // If this is a season-specific alias (idx >= 2), also check season "1" since standalone
+            // season entries often index their episodes under season 1
+            var seasonKeysToTry: [String] = ["\(season)"]
+            if idx >= 2 {
+                seasonKeysToTry.append("1")
+            }
+            seasonKeysToTry.append(contentsOf: ["default", "*"])
+
             for sKey in seasonKeysToTry {
                 guard let matchers = seasonMap[sKey] else { continue }
                 if let matched = matchers.first(where: { $0.matches(episode: episode) }) {
@@ -136,7 +157,56 @@ public final class LocalSkipDatabase: @unchecked Sendable {
             }
         }
 
+        // 3. Fallback: check if base season has a default or wildcard rule
+        if let seasonMap = seriesMap[normalizedSlug] ?? seriesMap[normalizedTitle] {
+            if let defaultMatchers = seasonMap["default"] ?? seasonMap["*"],
+               let matched = defaultMatchers.first(where: { $0.matches(episode: episode) }) {
+                let times = buildSkipTimes(from: matched.rule, season: season, episode: episode)
+                if !times.isEmpty || matched.rule.noOpening {
+                    return times
+                }
+            }
+        }
+
         return nil
+    }
+
+    private func generateSeasonSeriesVariants(base: String, season: Int) -> [String] {
+        var variants: [String] = []
+        variants.append("\(base)season\(season)")
+        variants.append("\(base)s\(season)")
+        variants.append("\(base)staffel\(season)")
+        variants.append("\(base)\(season)")
+
+        switch season {
+        case 2:
+            variants.append("\(base)2ndseason")
+            variants.append("\(base)secondseason")
+            variants.append("\(base)ii")
+        case 3:
+            variants.append("\(base)3rdseason")
+            variants.append("\(base)thirdseason")
+            variants.append("\(base)iii")
+        case 4:
+            variants.append("\(base)4thseason")
+            variants.append("\(base)fourthseason")
+            variants.append("\(base)iv")
+            variants.append("\(base)finalseason")
+            variants.append("\(base)thefinalseason")
+        case 5:
+            variants.append("\(base)5thseason")
+            variants.append("\(base)fifthseason")
+            variants.append("\(base)v")
+        case 6:
+            variants.append("\(base)6thseason")
+            variants.append("\(base)vi")
+        case 7:
+            variants.append("\(base)7thseason")
+            variants.append("\(base)vii")
+        default:
+            variants.append("\(base)\(season)thseason")
+        }
+        return variants
     }
 
     private func buildSkipTimes(from rule: Rule, season: Int, episode: Int) -> [SkipTime] {
