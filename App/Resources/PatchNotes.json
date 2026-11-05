@@ -1,24 +1,22 @@
 [
   {
-    "version": "0.2.2",
+    "version": "0.3.0",
     "date": "2026-11-05",
     "notes": [
+      "Intro-, Outro- und Rückblick-Zeitmarken kommen jetzt online von AniSkip (in den Einstellungen abschaltbar). Deine eigenen Zeiten haben immer Vorrang.",
       "Auf der Serienseite wird jetzt die Altersfreigabe (FSK) angezeigt.",
       "Neue Genre-Filter in der Suche: Wähle ein oder mehrere Genres, auch kombiniert mit einem Suchbegriff.",
       "Genres auf der Serienseite sind antippbar und zeigen alle Serien dieses Genres.",
       "Neu: „Alle Animes A–Z“ in der Suche, mit Buchstaben-Schnellsprung und Filterfeld.",
       "Neu: Ein Kalender auf der Startseite zeigt, wann neue Folgen erscheinen.",
       "Gesehene Downloads werden erst gelöscht, wenn du die Folge verlässt – nie mehr während sie läuft.",
-      "Komprimierte Downloads erscheinen erst nach dem Komprimieren in der Liste; bei einem Fehler bleibt die Originaldatei erhalten.",
-      "Die Komprimierungsstufen sind jetzt korrekt beschrieben.",
+      "Komprimierte Downloads erscheinen erst nach dem Komprimieren in der Liste; bei einem Fehler bleibt die Originaldatei erhalten. Die Qualitätsstufen sind jetzt korrekt beschrieben.",
       "„Nur im WLAN herunterladen“ wirkt sofort, ohne Neustart der App.",
-      "Die Display-Helligkeit wird nach dem Player zuverlässig auf den ursprünglichen Wert zurückgesetzt.",
       "Fehlerseiten von Hostern werden nicht mehr als fertiger Download gespeichert.",
       "Das Wischen für die Lautstärke ändert nur noch die Systemlautstärke und reagiert nur auf senkrechtes Wischen.",
-      "Die Bildschirmhelligkeit wird zurückgesetzt, wenn die App in den Hintergrund oder in Bild-in-Bild wechselt.",
+      "Die Bildschirmhelligkeit wird nach dem Player, im Hintergrund und bei Bild-in-Bild zuverlässig zurückgesetzt.",
       "Das Löschen von Staffel-Downloads in den Serien-Details funktioniert zuverlässiger.",
-      "Intro- und Outro-Zeitmarken kommen jetzt online von AniSkip (in den Einstellungen abschaltbar). Deine eigenen Zeiten haben immer Vorrang.",
-      "Korrektur: Die in den letzten Patchnotes angekündigte Offline-Datenbank war nie enthalten und wurde durch die AniSkip-Abfrage ersetzt."
+      "Korrektur: Die in 0.2.1 angekündigte Offline-Datenbank für Zeitmarken war nie enthalten und wurde durch die AniSkip-Abfrage ersetzt."
     ]
   },
   {
