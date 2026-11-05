@@ -57,7 +57,8 @@ struct AppEnvironment {
         make(service: AniworldClient())
     }
 
-    static func make(service: AniworldService, stats: WatchStatsStore = WatchStatsStore()) -> AppEnvironment {
+    static func make(service: AniworldService, stats: WatchStatsStore? = nil) -> AppEnvironment {
+        let stats: WatchStatsStore = stats ?? WatchStatsStore()
         let library = LibraryStore()
         let settings = SettingsStore()
         return AppEnvironment(
