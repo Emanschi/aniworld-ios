@@ -222,16 +222,6 @@ final class GenreParserTests: XCTestCase {
         XCTAssertEqual(first.title, "Demon's Ascension")
     }
 
-    func testGenreGroupsAndSlugify() throws {
-        XCTAssertEqual(GenreParser.slugify("Fighting-Shounen"), "fighting-shounen")
-        XCTAssertEqual(GenreParser.slugify("Komödie"), "komoedie")
-        XCTAssertEqual(GenreParser.slugify(" Slice of Life "), "slice-of-life")
-        let groups = GenreParser.parseGenreGroups(try Fixture.text("animes.html"))
-        XCTAssertEqual(groups["abenteuer"]?.map(\.slug).first, "demons-ascension")
-        XCTAssertEqual(groups["action"]?.count, 3)
-        XCTAssertEqual(GenreParser.parseGenreGroups("<html></html>"), [:])
-    }
-
     func testGarbageYieldsEmpty() {
         XCTAssertEqual(GenreParser.parseGenres(""), [])
         XCTAssertEqual(GenreParser.parseGenrePage("<html></html>"), [])

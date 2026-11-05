@@ -76,32 +76,19 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
         GenreParser.parseGenres(try await http.getText(baseURL))
     }
 
-    /// Uses the genre-grouped `/animes` page (cached, one request for all genres) for membership and the
-    /// first `/genre/<slug>` page for covers. Falls back to paging `/genre/<slug>` if the genre is missing there.
+    /// All series of a genre, paging through `/genre/<slug>/<n>`. Cached per genre for 30 minutes, so
+    /// combining genres in the search filter only loads each genre once.
+    /// (`/animes` is not usable here: it lists every series only under its main genre.)
     public func series(inGenre slug: String) async throws -> [SeriesSummary] {
-        let slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "/ \n\t"))
+        let slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "/ \n\t")).lowercased()
         guard !slug.isEmpty, !slug.contains("/") else { return [] }
-        let firstHTML = try await http.getText(url("/genre/\(slug)"))
-        let groups = try await genreGroups.value {
-            GenreParser.parseGenreGroups(try await self.http.getText(self.url("/animes")), baseURL: self.baseURL)
-        }
-        if let members = groups[slug.lowercased()], !members.isEmpty {
-            var covers: [String: URL] = [:]
-            for s in GenreParser.parseGenrePage(firstHTML, baseURL: baseURL) {
-                if let c = s.coverURL { covers[s.slug] = c }
-            }
-            return members.map { s in
-                var copy = s
-                copy.coverURL = covers[s.slug]
-                return copy
-            }
-        }
-        return try await pagedGenre(slug: slug, firstHTML: firstHTML)
+        return try await genreCache.value(for: slug) { try await self.pagedGenre(slug: slug) }
     }
 
-    private let genreGroups = CachedValue<[String: [SeriesSummary]]>(lifetime: 30 * 60)
+    private let genreCache = KeyedCache<[SeriesSummary]>(lifetime: 30 * 60)
 
-    private func pagedGenre(slug: String, firstHTML: String) async throws -> [SeriesSummary] {
+    private func pagedGenre(slug: String) async throws -> [SeriesSummary] {
+        let firstHTML = try await http.getText(url("/genre/\(slug)"))
         let maxPages = 50
         var seen = Set<String>()
         var out: [SeriesSummary] = []
@@ -143,22 +130,22 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
     }
 }
 
-/// Caches one expensive value for a while; concurrent callers share a single load.
-actor CachedValue<Value: Sendable> {
+/// Caches expensive values per key for a while; concurrent callers for the same key share one load.
+actor KeyedCache<Value: Sendable> {
     private let lifetime: TimeInterval
-    private var stored: (value: Value, date: Date)?
-    private var loading: Task<Value, Error>?
+    private var stored: [String: (value: Value, date: Date)] = [:]
+    private var loading: [String: Task<Value, Error>] = [:]
 
     init(lifetime: TimeInterval) { self.lifetime = lifetime }
 
-    func value(_ load: @escaping @Sendable () async throws -> Value) async throws -> Value {
-        if let stored, Date().timeIntervalSince(stored.date) < lifetime { return stored.value }
-        if let loading { return try await loading.value }
+    func value(for key: String, _ load: @escaping @Sendable () async throws -> Value) async throws -> Value {
+        if let hit = stored[key], Date().timeIntervalSince(hit.date) < lifetime { return hit.value }
+        if let running = loading[key] { return try await running.value }
         let task = Task { try await load() }
-        loading = task
-        defer { loading = nil }
+        loading[key] = task
+        defer { loading[key] = nil }
         let value = try await task.value
-        stored = (value, Date())
+        stored[key] = (value, Date())
         return value
     }
 }

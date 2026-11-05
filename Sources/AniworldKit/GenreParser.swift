@@ -67,44 +67,6 @@ enum GenreParser {
         return out
     }
 
-    /// URL-style genre slug for a genre heading, matching the site's `/genre/<slug>` links
-    /// ("Fighting-Shounen" → "fighting-shounen", "Komödie" → "komoedie", "Slice of Life" → "slice-of-life").
-    static func slugify(_ name: String) -> String {
-        var s = name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        for (from, to) in [("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")] {
-            s = s.replacingOccurrences(of: from, with: to)
-        }
-        s = s.folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US_POSIX"))
-        s = s.replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
-        return s.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-    }
-
-    /// `/animes` groups every series by genre: `div.genre` with an `h3` heading and a `ul` of links.
-    /// Returns slugified heading → series of that genre (one request instead of paging `/genre/<slug>`).
-    static func parseGenreGroups(_ html: String, baseURL: URL = AniworldClient.defaultBaseURL) -> [String: [SeriesSummary]] {
-        guard let doc = try? SwiftSoup.parse(html), let blocks = try? doc.select("#seriesContainer div.genre") else {
-            return [:]
-        }
-        var out: [String: [SeriesSummary]] = [:]
-        for block in blocks.array() {
-            guard let heading = try? block.select("h3").first()?.text() else { continue }
-            let key = slugify(heading)
-            guard !key.isEmpty, let anchors = try? block.select("li a[href]") else { continue }
-            var seen = Set<String>()
-            var list: [SeriesSummary] = []
-            for a in anchors.array() {
-                guard let href = try? a.attr("href"),
-                      let slug = SearchParser.seriesSlug(Support.path(of: href)),
-                      seen.insert(slug).inserted,
-                      let url = Support.absoluteURL("/anime/stream/\(slug)", base: baseURL) else { continue }
-                let title = ((try? a.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                list.append(SeriesSummary(slug: slug, title: title.isEmpty ? slug : title, url: url))
-            }
-            out[key, default: []].append(contentsOf: list)
-        }
-        return out
-    }
-
     /// Plain list pages (`/animes`, `/animes-alphabet`): `div.genre > ul > li > a`. De-duplicated by slug
     /// (on `/animes` a series appears once per genre).
     static func parseSeriesList(_ html: String, baseURL: URL = AniworldClient.defaultBaseURL) -> [SeriesSummary] {
