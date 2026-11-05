@@ -178,6 +178,11 @@ final class WatchStatsStore {
         ).compute()
     }
 
+    /// Daily streak over all data (a day counts with at least one completely watched episode).
+    func streak(now: Date = Date(), calendar: Calendar = .current) -> WatchStreak {
+        WatchStreak.compute(sessions: sessions, now: now, calendar: calendar)
+    }
+
     // MARK: Sync support
 
     /// Everything known locally (the sync layer merges it with the other devices' data).

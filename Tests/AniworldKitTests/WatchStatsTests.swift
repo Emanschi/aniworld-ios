@@ -22,6 +22,41 @@ final class WatchStatsTests: XCTestCase {
                      wasOffline: offline, deviceID: device)
     }
 
+    // MARK: Streak
+
+    func testStreakCountsOnlyCompletedEpisodes() {
+        let now = date(2026, 11, 10, 9)
+        let sessions = [
+            session("a", start: date(2026, 11, 7)),
+            session("b", start: date(2026, 11, 8)),
+            session("c", start: date(2026, 11, 9)),
+            session("partial", start: date(2026, 11, 10, 8), minutes: 5, completed: false),
+        ]
+        let streak = WatchStreak.compute(sessions: sessions, now: now, calendar: calendar)
+        XCTAssertEqual(streak.current, 3)
+        XCTAssertFalse(streak.todayDone)
+        XCTAssertTrue(streak.atRisk)
+        XCTAssertEqual(streak.lastSevenDays.count, 7)
+        XCTAssertEqual(streak.lastSevenDays.map { $0.done }, [false, false, false, true, true, true, false])
+    }
+
+    func testStreakBreaksAfterMissedDayAndKeepsLongest() {
+        let now = date(2026, 11, 10)
+        let sessions = [
+            session("a", start: date(2026, 11, 1)),
+            session("b", start: date(2026, 11, 2)),
+            session("c", start: date(2026, 11, 3)),
+            session("d", start: date(2026, 11, 3, 20)),
+            session("e", start: date(2026, 11, 10, 8)),
+        ]
+        let streak = WatchStreak.compute(sessions: sessions, now: now, calendar: calendar)
+        XCTAssertEqual(streak.current, 1)
+        XCTAssertTrue(streak.todayDone)
+        XCTAssertFalse(streak.atRisk)
+        XCTAssertEqual(streak.longest, 3)
+        XCTAssertEqual(WatchStreak.compute(sessions: [], now: now, calendar: calendar).current, 0)
+    }
+
     // MARK: Merge
 
     func testMergeUnionAndNewerEndWins() {

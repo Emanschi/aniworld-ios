@@ -31,7 +31,7 @@
 | ⬇️ **Downloads** | Folgen oder ganze Staffeln offline speichern, nur im WLAN, gesehene Folgen automatisch löschen, optional platzsparend komprimiert |
 | ❤️ **Bibliothek** | Favoriten, Weiterschauen-Verlauf mit Fortschritt, Benachrichtigung bei neuen Folgen deiner Favoriten |
 | ☁️ **Sync (optional)** | Favoriten, Verlauf und Fortschritt über einen Ordner in deinem iCloud Drive zwischen iPhone und iPad abgleichen |
-| 📊 **Statistiken** | Watchtime, Top-Serien und -Genres, Sprachen, Lieblingstage und Fun Facts pro Monat, dazu ein Monatsrückblick zum Durchwischen (über iCloud synchronisiert) |
+| 📊 **Statistiken** | Watchtime, täglicher Streak mit Flammen, Top-Serien und -Genres, Sprachen, Lieblingstage und Fun Facts pro Monat, dazu ein Monatsrückblick zum Durchwischen (über iCloud synchronisiert) |
 | 🔔 **Updates** | Hinweis auf neue Versionen und „Was ist neu“ nach jedem Update |
 
 **Datenschutz:** Kein Account, keine eigenen Server, kein Tracking. Alles bleibt auf deinem Gerät

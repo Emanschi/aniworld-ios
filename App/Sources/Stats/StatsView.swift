@@ -33,6 +33,7 @@ struct StatsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 periodPicker
+                StreakCard(streak: store.streak())
                 if stats.hasData {
                     heroCard(stats)
                     tilesGrid(stats)
