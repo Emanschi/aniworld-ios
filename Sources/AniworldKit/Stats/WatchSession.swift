@@ -142,7 +142,8 @@ public enum StatsMerge {
 
         var meta: [String: SeriesMeta] = [:]
         for state in states {
-            for (slug, value) in state.seriesMeta {
+            // A reset also forgets genre info recorded before it.
+            for (slug, value) in state.seriesMeta where reset.map({ value.updatedAt > $0 }) ?? true {
                 if let current = meta[slug] {
                     let newer = value.updatedAt > current.updatedAt
                     let tie = value.updatedAt == current.updatedAt

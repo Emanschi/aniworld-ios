@@ -140,6 +140,8 @@ final class AllSeriesViewModel {
     var total = 0
     private var all: [SeriesSummary] = []
     private var hasLoaded = false
+    /// Latest filter text; the user may type while the catalogue is still loading.
+    private var activeFilter = ""
 
     func load(service: AniworldService, filter: String, force: Bool = false) async {
         if hasLoaded && !force { return }
@@ -150,7 +152,7 @@ final class AllSeriesViewModel {
             all = result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             total = all.count
             hasLoaded = true
-            regroup(filter: filter)
+            regroup(filter: activeFilter)
             phase = .loaded
         } catch {
             if Task.isCancelled { return }
@@ -159,6 +161,7 @@ final class AllSeriesViewModel {
     }
 
     func regroup(filter: String) {
+        activeFilter = filter
         let needle = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         let source = needle.isEmpty ? all : all.filter { $0.title.localizedCaseInsensitiveContains(needle) }
         var buckets: [String: [SeriesSummary]] = [:]

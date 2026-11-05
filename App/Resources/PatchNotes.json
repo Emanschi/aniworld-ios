@@ -15,7 +15,12 @@
       "Bild-in-Bild funktioniert jetzt wie ein Mini-Player: Das Video läuft weiter, während du in der App stöberst. Über „Zurück zur App“ kehrst du zum Vollbild-Player zurück, mit dem X beendest du die Wiedergabe.",
       "AniSkip lässt sich pro Serie ausschalten (Menü „…“ auf der Serienseite), falls die Zeitmarken einmal nicht passen.",
       "Abgefragte Intro- und Outro-Zeiten werden auf dem Gerät gespeichert und funktionieren so auch offline.",
-      "Kalender: Tage heißen jetzt „Heute“, „Morgen“ oder „Freitag, 06.11.“, und mit dem Stern zeigst du nur deine Favoriten und Serien aus „Weiterschauen“."
+      "Kalender: Tage heißen jetzt „Heute“, „Morgen“ oder „Freitag, 06.11.“, und mit dem Stern zeigst du nur deine Favoriten und Serien aus „Weiterschauen“.",
+      "Sync: Die bevorzugte Sprache pro Serie geht beim ersten iCloud-Abgleich nicht mehr verloren, und nach „Statistik zurücksetzen“ kommen alte Genre-Daten nicht von anderen Geräten zurück.",
+      "Suche: Titel mit Umlauten (ä, ö, ü) werden jetzt zuverlässig gefunden.",
+      "Suche: Wird der Genre-Filter zurückgesetzt, während er noch lädt, erscheinen keine veralteten Treffer mehr.",
+      "Alle Animes A–Z: Ein Filtertext, den du während des Ladens eintippst, wird jetzt direkt angewendet.",
+      "Player: Startest du eine Folge über „Weiterschauen“, zeigt die Folgenliste jetzt die ganze Staffel und „Vorherige Folge“ funktioniert."
     ]
   },
   {

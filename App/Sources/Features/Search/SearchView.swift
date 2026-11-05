@@ -50,6 +50,8 @@ final class SearchViewModel {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         lastQuery = trimmed
         isLoadingMore = false
+        // Invalidates late progress of an older genre search (e.g. after the filter was cleared).
+        searchToken += 1
         if selectedGenres.isEmpty {
             if trimmed.isEmpty {
                 results = []
