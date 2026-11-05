@@ -46,6 +46,11 @@ public protocol AniworldService: Sendable {
     /// All series of a genre (`GenreRef.slug`); follows the site's pagination.
     func series(inGenre slug: String) async throws -> [SeriesSummary]
 
+    /// Like `series(inGenre:)`, but reports the list loaded so far (growing, in site order) while pages
+    /// arrive, so the UI can show results right away. The final list is also returned.
+    func series(inGenre slug: String,
+                progress: @escaping @Sendable ([SeriesSummary]) async -> Void) async throws -> [SeriesSummary]
+
     /// The complete A–Z series list.
     func allSeries() async throws -> [SeriesSummary]
 
@@ -56,6 +61,12 @@ public protocol AniworldService: Sendable {
 public extension AniworldService {
     func genres() async throws -> [GenreRef] { [] }
     func series(inGenre slug: String) async throws -> [SeriesSummary] { [] }
+    func series(inGenre slug: String,
+                progress: @escaping @Sendable ([SeriesSummary]) async -> Void) async throws -> [SeriesSummary] {
+        let all = try await series(inGenre: slug)
+        await progress(all)
+        return all
+    }
     func allSeries() async throws -> [SeriesSummary] { [] }
     func releaseCalendar() async throws -> [CalendarDay] { [] }
 }

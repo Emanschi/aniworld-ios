@@ -12,21 +12,51 @@ import AniworldKit
 final class GenreSeriesViewModel {
     var series: [SeriesSummary] = []
     var phase: LoadPhase = .loading
+    /// True while more pages are still arriving.
+    private(set) var isLoadingMore = false
     private var loadedSlug: String?
 
     func load(genre: GenreRef, service: AniworldService, force: Bool = false) async {
         if loadedSlug == genre.slug && !force { return }
         phase = .loading
+        isLoadingMore = true
         do {
-            let result = try await service.series(inGenre: genre.slug)
+            let result = try await service.series(inGenre: genre.slug, progress: { [weak self] partial in
+                await self?.show(partial)
+            })
             if Task.isCancelled { return }
             series = result
             loadedSlug = genre.slug
+            isLoadingMore = false
             phase = .loaded
         } catch {
             if Task.isCancelled { return }
-            phase = .failed(error)
+            isLoadingMore = false
+            // Keep what already arrived; only show the error screen when nothing did.
+            if series.isEmpty { phase = .failed(error) }
         }
+    }
+
+    private func show(_ partial: [SeriesSummary]) {
+        guard !partial.isEmpty, partial.count >= series.count else { return }
+        series = partial
+        phase = .loaded
+    }
+}
+
+/// Footer below a growing result grid while more pages are loading.
+struct LoadingMoreRow: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().tint(Theme.textSecondary)
+            Text("\(count) Serien geladen, lädt weitere …")
+                .font(.footnote)
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
     }
 }
 
@@ -84,6 +114,10 @@ struct GenreSeriesView: View {
                         }
                         .buttonStyle(PressableStyle())
                     }
+                }
+                if vm.isLoadingMore {
+                    LoadingMoreRow(count: vm.series.count)
+                        .padding(.top, 18)
                 }
             }
         }
