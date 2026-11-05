@@ -108,7 +108,9 @@ final class HTTPClient: HTTPFetching, @unchecked Sendable {
     }
 
     private func backoff(attempt: Int, retryAfter: Double?) async throws {
-        let seconds = min(retryAfter ?? Self.backoffFactor * pow(2, Double(attempt)), 10) * backoffScale
+        var base = retryAfter ?? Self.backoffFactor * pow(2, Double(attempt))
+        if !base.isFinite { base = Self.backoffFactor * pow(2, Double(attempt)) }
+        let seconds = max(min(base, 10), 0) * backoffScale
         try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
     }
 

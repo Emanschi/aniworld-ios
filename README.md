@@ -36,7 +36,7 @@
 
 **Datenschutz:** Kein Account, keine eigenen Server, kein Tracking. Alles bleibt auf deinem Gerät
 bzw. in deinem eigenen iCloud Drive. Die App spricht nur mit aniworld.to, den Hostern, der AniSkip-API
-(Zeitmarken, abschaltbar) und für den Update-Hinweis mit der GitHub-API.
+(Zeitmarken, abschaltbar; dafür wird der Serientitel bei AniList nachgeschlagen) und für den Update-Hinweis mit der GitHub-API.
 
 ## Installation
 

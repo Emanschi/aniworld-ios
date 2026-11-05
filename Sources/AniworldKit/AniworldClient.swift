@@ -55,8 +55,8 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
         request.setValue("application/x-www-form-urlencoded; charset=UTF-8", forHTTPHeaderField: "Content-Type")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
         request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Origin")
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
+        // ASCII only: CharacterSet.alphanumerics includes umlauts, which would be sent unencoded.
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query
         request.httpBody = Data("keyword=\(encoded)".utf8)
         let response = try await http.send(request)

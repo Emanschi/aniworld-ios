@@ -182,3 +182,17 @@ final class WatchStatsTests: XCTestCase {
         XCTAssertEqual(WatchStatsCalculator.funComparison(totalSeconds: 30 * 3600)?.contains("Herr-der-Ringe"), true)
     }
 }
+
+final class WatchStatsMetaResetTests: XCTestCase {
+    func testResetDropsOlderSeriesMeta() {
+        let now = Date()
+        let old = SeriesMeta(genres: ["Action"], ageRating: 12, updatedAt: now.addingTimeInterval(-1000))
+        let fresh = SeriesMeta(genres: ["Drama"], ageRating: 12, updatedAt: now.addingTimeInterval(-10))
+        let merged = StatsMerge.merge([
+            StatsState(seriesMeta: ["a": old], resetAt: now.addingTimeInterval(-100)),
+            StatsState(seriesMeta: ["a": old, "b": fresh]),
+        ], now: now)
+        XCTAssertNil(merged.seriesMeta["a"])
+        XCTAssertEqual(merged.seriesMeta["b"], fresh)
+    }
+}

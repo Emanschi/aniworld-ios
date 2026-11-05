@@ -78,7 +78,7 @@ enum LibraryMerge {
 
         // Languages
         for state in states {
-            for (slug, choice) in state.languages where choice.updatedAt > reset {
+            for (slug, choice) in state.languages where out.resetAt == nil || choice.updatedAt > reset {
                 if let current = out.languages[slug] {
                     if choice.updatedAt > current.updatedAt
                         || (choice.updatedAt == current.updatedAt && choice.language.rawValue > current.language.rawValue) {

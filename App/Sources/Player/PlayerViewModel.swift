@@ -590,6 +590,15 @@ final class PlayerViewModel {
     func prepareNext() async {
         guard let coordinator else { return }
         let key = episode.id
+        // Started from "Weiterschauen" etc.: the season list is empty, so load it for the episode
+        // list, "previous" and the next-episode lookup.
+        if !seasonEpisodes.contains(where: { $0.id == key }), let service,
+           let fetched = try? await service.episodes(slug: series.slug, season: episode.season),
+           key == episode.id, !isShutdown, fetched.contains(where: { $0.id == key }) {
+            let ordered = fetched.sorted { $0.number < $1.number }
+            seasonEpisodes = ordered
+            coordinator.activeSession?.seasonEpisodes = ordered
+        }
         let result = await coordinator.nextEpisode(after: episode, in: series, seasonEpisodes: seasonEpisodes)
         guard key == episode.id, !isShutdown else { return }
         nextInfo = result
