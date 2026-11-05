@@ -258,6 +258,35 @@ final class LibraryStore {
         scheduleSave()
     }
 
+    /// Marks the given episodes as watched (e.g. a season or series already seen elsewhere).
+    /// "Weiterschauen" then points at the last of them, so the next episode comes up.
+    func markWatched(_ episodes: [EpisodeRef], series: SeriesSummary) {
+        guard !episodes.isEmpty else { return }
+        let now = Date()
+        for ep in episodes {
+            var p = progressByEpisode[ep.id]
+                ?? EpisodeProgress(position: 0, duration: 0, watched: false, updatedAt: now)
+            p.watched = true
+            if p.duration > 0 { p.position = p.duration }
+            p.updatedAt = now
+            progressByEpisode[ep.id] = p
+        }
+        let last = episodes.max { ($0.season, $0.number) < ($1.season, $1.number) }!
+        if !hasLaterHistoryEntry(than: last) {
+            let p = progressByEpisode[last.id]
+            upsertHistory(WatchEntry(series: series, episode: last,
+                                     language: languageBySlug[series.slug],
+                                     position: p?.position ?? 0, duration: p?.duration ?? 0,
+                                     updatedAt: now, isFinished: true))
+        }
+        scheduleSave()
+    }
+
+    /// Whether every given episode is marked watched.
+    func allWatched(_ episodes: [EpisodeRef]) -> Bool {
+        !episodes.isEmpty && episodes.allSatisfy { progressByEpisode[$0.id]?.watched == true }
+    }
+
     /// Whether any episode of the series (or of one season) has progress or is marked watched.
     func hasProgress(seriesSlug: String, season: Int? = nil) -> Bool {
         progressByEpisode.contains { id, p in

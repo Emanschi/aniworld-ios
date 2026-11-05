@@ -486,8 +486,29 @@ struct SeriesDetailView: View {
             let slug = displaySummary.slug
             let hasDownloads = downloads.hasDownloads(seriesSlug: slug)
             let hasProgress = library.hasProgress(seriesSlug: slug)
-            if hasDownloads || hasProgress {
+            if hasDownloads || hasProgress || !vm.seasons.isEmpty {
                 Menu {
+                    if let season = vm.selectedSeason, !library.allWatched(vm.currentEpisodes) {
+                        Button {
+                            library.markWatched(vm.currentEpisodes, series: displaySummary)
+                            Haptics.success()
+                        } label: {
+                            Label(season == 0 ? "Alle Filme als gesehen markieren"
+                                              : "Staffel \(season) als gesehen markieren",
+                                  systemImage: "checkmark.circle")
+                        }
+                    }
+                    if vm.seasons.contains(where: { !$0.isFilms }) {
+                        Button {
+                            Task {
+                                guard let all = try? await vm.allRegularEpisodes(slug: slug, service: service) else { return }
+                                library.markWatched(all, series: displaySummary)
+                                Haptics.success()
+                            }
+                        } label: {
+                            Label("Ganze Serie als gesehen markieren", systemImage: "checkmark.circle.fill")
+                        }
+                    }
                     if let season = vm.selectedSeason, library.hasProgress(seriesSlug: slug, season: season) {
                         Button {
                             resetPrompt = .season(season)

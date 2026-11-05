@@ -5,6 +5,7 @@
     "notes": [
       "Genre-Filter und Genre-Listen laden deutlich schneller: Die ersten Serien erscheinen sofort, der Rest lädt sichtbar nach.",
       "Einmal geladene Genres stehen einen Tag lang auch nach einem Neustart der App sofort bereit.",
+      "Schon woanders gesehen? Ganze Staffeln oder die komplette Serie lassen sich über das Menü „…“ auf der Serienseite als gesehen abhaken. „Weiterschauen“ springt dann zur nächsten Folge.",
       "Fortschritt zurücksetzen, um nochmal zu schauen: einzelne Folgen (lange drücken), eine ganze Staffel oder die komplette Serie (Menü „…“ auf der Serienseite).",
       "Die Helligkeit wird jetzt auch zurückgesetzt, wenn du den Mini-Player (Bild-in-Bild) über den Button startest, und beim Zurückkehren wieder angewendet.",
       "Intro- und Outro-Sprünge von AniSkip passen jetzt zur Länge der gerade laufenden Folge. Zeitmarken einer anders langen Fassung werden nicht mehr verwendet (z. B. Attack on Titan sprang zu früh)."
