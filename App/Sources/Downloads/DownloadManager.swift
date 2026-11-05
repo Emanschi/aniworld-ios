@@ -520,10 +520,10 @@ final class DownloadManager {
         switch settings.downloadQuality {
         case .low:
             preferredPreset = AVAssetExportPreset640x480
-            fallbackPreset = AVAssetExportPreset640x480
+            fallbackPreset = AVAssetExportPresetLowQuality
         case .medium:
-            preferredPreset = AVAssetExportPresetHEVC1280x720
-            fallbackPreset = AVAssetExportPreset1280x720
+            preferredPreset = AVAssetExportPreset1280x720
+            fallbackPreset = AVAssetExportPresetMediumQuality
         case .high:
             preferredPreset = AVAssetExportPresetHEVC1920x1080
             fallbackPreset = AVAssetExportPreset1920x1080
