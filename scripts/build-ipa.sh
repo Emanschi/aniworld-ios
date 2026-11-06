@@ -65,10 +65,15 @@ codesign --force --sign - --timestamp=none \
   --entitlements "$ROOT/Widgets/AniWorldWidgets.entitlements" "$WIDGET"
 codesign --force --sign - --timestamp=none \
   --entitlements "$ROOT/App/AniWorld.entitlements" "$APP"
-codesign -d --entitlements - "$WIDGET" 2>/dev/null | grep -q 'group.com.aniworldios.app' \
-  || { echo "error: App Group missing in widget signature" >&2; exit 1; }
-codesign -d --entitlements - "$APP" 2>/dev/null | grep -q 'group.com.aniworldios.app' \
-  || { echo "error: App Group missing in app signature" >&2; exit 1; }
+# Read the entitlements as XML (":-") into a variable first: piping into `grep -q` can end in
+# SIGPIPE, which pipefail would turn into a spurious failure.
+for bundle in "$WIDGET" "$APP"; do
+  ents="$(codesign -d --entitlements :- "$bundle" 2>/dev/null || true)"
+  if [[ "$ents" != *"<string>group.com.aniworldios.app</string>"* ]]; then
+    echo "error: App Group missing in signature of $bundle" >&2
+    exit 1
+  fi
+done
 
 echo "==> package IPA"
 STAGE="$OUT_DIR/ipa-stage"
