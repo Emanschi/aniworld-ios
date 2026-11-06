@@ -312,6 +312,28 @@ final class CalendarParserTests: XCTestCase {
         XCTAssertEqual(CalendarParser.info(for: [rel("", nil, "")]), "")
     }
 
+    func testInfoNeverMergesDubWithSub() {
+        let rel = { (c: String, l: StreamLanguage?, t: String) in CalendarRelease(code: c, language: l, time: t) }
+        XCTAssertEqual(CalendarParser.info(for: [rel("S01E01", .germanDub, "23:59"), rel("S01E01", .germanSub, "23:59"),
+                                                 rel("S01E01", .englishSub, "23:59")]),
+                       "S01E01 GerDub · S01E01 GerSub/EngSub · 23:59")
+    }
+
+    func testSortsEpisodesWithinLanguage() throws {
+        let f = "demons-crest"
+        let html = """
+        <section class="calendarList"><h3>Donnerstag, 05.11.2026 (heute)</h3><div class="seriesListContainer">\([
+            Self.item(f, "S01E02", "japanese-german", "17:10"),
+            Self.item(f, "S01E01", "japanese-german", "17:10"),
+            Self.item(f, "S01E02", "german", "18:00"),
+            Self.item(f, "S01E01", "german", "18:00"),
+        ].joined())</div></section>
+        """
+        let entry = try XCTUnwrap(CalendarParser.parse(html).first?.entries.first)
+        XCTAssertEqual(entry.releases.map(\.code), ["S01E01", "S01E02", "S01E01", "S01E02"])
+        XCTAssertEqual(entry.releases.map(\.language), [.germanDub, .germanDub, .germanSub, .germanSub])
+    }
+
     func testGarbageYieldsEmpty() {
         XCTAssertEqual(CalendarParser.parse(""), [])
         XCTAssertEqual(CalendarParser.parse("<section class=\"calendarList\"><h3>Montag</h3></section>"), [])

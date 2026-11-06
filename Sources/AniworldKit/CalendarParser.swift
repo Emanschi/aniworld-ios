@@ -79,7 +79,8 @@ enum CalendarParser {
         return CalendarRelease(code: code, language: language, time: time)
     }
 
-    /// German dub, German sub, English sub, unknown last; stable otherwise.
+    /// German dub, German sub, English sub, unknown last; within a language by (season, episode)
+    /// parsed from the code, then time. Unparsable codes keep their original order.
     private static func sorted(_ releases: [CalendarRelease]) -> [CalendarRelease] {
         func rank(_ l: StreamLanguage?) -> Int {
             switch l {
@@ -89,22 +90,36 @@ enum CalendarParser {
             case nil: 3
             }
         }
+        func key(_ r: CalendarRelease) -> (season: Int, episode: Int, time: String) {
+            guard let m = Support.match("^S(\\d+)E(\\d+)$", in: r.code.uppercased()),
+                  let s = Int(m[1]), let e = Int(m[2]) else { return (Int.max, Int.max, "") }
+            return (s, e, r.time)
+        }
         return releases.enumerated()
-            .sorted { rank($0.element.language) != rank($1.element.language)
-                ? rank($0.element.language) < rank($1.element.language) : $0.offset < $1.offset }
+            .sorted { a, b in
+                let ra = rank(a.element.language), rb = rank(b.element.language)
+                if ra != rb { return ra < rb }
+                let ka = key(a.element), kb = key(b.element)
+                if ka.season != kb.season { return ka.season < kb.season }
+                if ka.episode != kb.episode { return ka.episode < kb.episode }
+                if ka.time != kb.time { return ka.time < kb.time }
+                return a.offset < b.offset
+            }
             .map(\.element)
     }
 
     /// "S01E02 GerDub · S01E05 GerSub/EngSub · 17:10": releases with the same code and time are
-    /// merged; the time is appended once if all groups share it, else after each group.
+    /// merged unless one is the German dub (a dub is never merged with a sub, like in the UI);
+    /// the time is appended once if all groups share it, else after each group.
     static func info(for releases: [CalendarRelease]) -> String {
-        var groups: [(code: String, time: String, langs: [String])] = []
+        var groups: [(code: String, time: String, isDub: Bool, langs: [String])] = []
         for r in releases {
             let lang = r.language?.shortName
-            if let i = groups.firstIndex(where: { $0.code == r.code && $0.time == r.time }) {
+            let isDub = r.language == .germanDub
+            if let i = groups.firstIndex(where: { $0.code == r.code && $0.time == r.time && $0.isDub == isDub }) {
                 if let lang, !groups[i].langs.contains(lang) { groups[i].langs.append(lang) }
             } else {
-                groups.append((r.code, r.time, lang.map { [$0] } ?? []))
+                groups.append((r.code, r.time, isDub, lang.map { [$0] } ?? []))
             }
         }
         let times = Set(groups.map(\.time))
