@@ -537,16 +537,6 @@ struct SeriesDetailView: View {
                             Label("Gesamten Fortschritt zurücksetzen", systemImage: "arrow.counterclockwise.circle")
                         }
                     }
-                    if settings.onlineSkipTimes {
-                        let disabled = library.isOnlineSkipDisabled(seriesSlug: slug)
-                        Button {
-                            library.setOnlineSkipDisabled(!disabled, seriesSlug: slug)
-                        } label: {
-                            Label(disabled ? "AniSkip-Zeitmarken für diese Serie einschalten"
-                                           : "AniSkip-Zeitmarken für diese Serie ausschalten",
-                                  systemImage: disabled ? "forward.end" : "forward.end.alt")
-                        }
-                    }
                     if hasDownloads {
                         Button(role: .destructive) {
                             confirmDeleteSeries = true

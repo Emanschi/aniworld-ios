@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.4.2",
+    "date": "2026-11-06",
+    "notes": [
+      "Intro- und Outro-Zeiten legst du jetzt ausschließlich selbst fest (pro Folge oder Staffel). Die Online-Zeitmarken wurden entfernt, weil sie bei den Streams auf aniworld meist nicht passten.",
+      "Die App verbindet sich dadurch nur noch mit aniworld.to, den Hostern und GitHub (Update-Hinweis)."
+    ]
+  },
+  {
     "version": "0.4.1",
     "date": "2026-11-06",
     "notes": [

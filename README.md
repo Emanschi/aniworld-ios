@@ -26,7 +26,7 @@
 |---|---|
 | 🔎 **Entdecken** | Suche mit Genre-Filter, alle Animes von A–Z, Startseite mit neuen und beliebten Serien, Kalender für neue Folgen, Altersfreigabe (FSK) |
 | 🎬 **Eigener Player** | Scrubber, Geschwindigkeit, Doppeltipp zum Spulen, Wischen für Helligkeit und Lautstärke, Bild-in-Bild, AirPlay, Hintergrundwiedergabe |
-| ⏭️ **Intro & Outro überspringen** | Zeitmarken online von [AniSkip](https://aniskip.com) (abschaltbar) oder eigene Zeiten pro Folge/Staffel, auf Wunsch automatisch; mit Autoplay direkt zur nächsten Folge |
+| ⏭️ **Intro & Outro überspringen** | Eigene Intro- und Outro-Zeiten pro Folge oder Staffel festlegen, auf Wunsch automatisch überspringen; mit Autoplay direkt zur nächsten Folge |
 | 🌐 **Sprachen & Hoster** | GerDub, GerSub, EngSub; VOE und Vidmoly mit automatischem Fallback und Stream-Prüfung |
 | ⬇️ **Downloads** | Folgen oder ganze Staffeln offline speichern, nur im WLAN, gesehene Folgen automatisch löschen, optional platzsparend komprimiert |
 | ❤️ **Bibliothek** | Favoriten, Weiterschauen-Verlauf mit Fortschritt, Benachrichtigung bei neuen Folgen deiner Favoriten |
@@ -35,8 +35,8 @@
 | 🔔 **Updates** | Hinweis auf neue Versionen und „Was ist neu“ nach jedem Update |
 
 **Datenschutz:** Kein Account, keine eigenen Server, kein Tracking. Alles bleibt auf deinem Gerät
-bzw. in deinem eigenen iCloud Drive. Die App spricht nur mit aniworld.to, den Hostern, der AniSkip-API
-(Zeitmarken, abschaltbar; dafür wird der Serientitel bei AniList nachgeschlagen) und für den Update-Hinweis mit der GitHub-API.
+bzw. in deinem eigenen iCloud Drive. Die App spricht nur mit aniworld.to, den Hostern und für den
+Update-Hinweis mit der GitHub-API.
 
 ## Installation
 
@@ -110,11 +110,11 @@ Hoster automatisch der Reihe nach durch; manchmal ist ein Hoster vorübergehend 
 </details>
 
 <details>
-<summary><b>„Intro überspringen“ fehlt oder springt falsch.</b></summary>
+<summary><b>Wie bekomme ich „Intro überspringen“?</b></summary>
 
-Die Zeitmarken kommen von der AniSkip-Community und gibt es nicht für jede Folge. Fehlen sie oder
-passen sie nicht, kannst du Intro und Outro im Player selbst festlegen (für eine Folge oder die ganze
-Staffel); eigene Zeiten haben immer Vorrang.
+Lege Intro und Outro im Player einmal selbst fest – für eine Folge oder gleich für die ganze Staffel.
+Danach erscheint der Sprung-Button automatisch (auf Wunsch wird auch automatisch übersprungen). Ohne
+eigene Zeiten gibt es den festen Sprung um eine einstellbare Anzahl Sekunden.
 
 </details>
 
@@ -182,5 +182,5 @@ Verantwortung.
 ## Lizenz
 
 [GPL-3.0](LICENSE), wie das Original [aniworld-cli](https://github.com/dxmoc/aniworld-cli).
-Verwendete Fremdsoftware und Daten (u. a. SwiftSoup, AniSkip-Zeitmarken):
+Verwendete Fremdsoftware (u. a. SwiftSoup):
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

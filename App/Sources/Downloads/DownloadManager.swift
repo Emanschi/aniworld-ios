@@ -514,7 +514,6 @@ final class DownloadManager {
 
     private func resolveAndStart(_ id: String) async {
         guard let job = jobs[id] else { return }
-        prefetchSkipTimes(for: job)
         do {
             let hosters = try await service.hosters(for: job.episode)
             guard !hosters.isEmpty else { throw AniworldError.noPlayableStream }
@@ -536,21 +535,6 @@ final class DownloadManager {
             if Task.isCancelled || error is CancellationError { return }
             if let a = error as? AniworldError, a == .cancelled { return }
             markFailed(id: id, message: Self.message(for: error))
-        }
-    }
-
-    /// Looks up AniSkip times once while online so they are cached for offline playback of the download.
-    /// Fire-and-forget: never blocks or fails the download.
-    private func prefetchSkipTimes(for job: DownloadJob) {
-        guard settings.enableSkipDetection, settings.onlineSkipTimes,
-              library?.isOnlineSkipDisabled(seriesSlug: job.series.slug) != true else { return }
-        let service = self.service
-        let series = job.series
-        let episode = job.episode
-        Task(priority: .utility) {
-            _ = await service.onlineSkipTimes(
-                seriesTitle: series.title, seriesSlug: series.slug,
-                season: episode.season, episode: episode.number)
         }
     }
 

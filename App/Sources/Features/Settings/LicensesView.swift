@@ -35,14 +35,6 @@ enum LicenseCatalog {
             textResource: "GPL-3.0"
         ),
         LicenseItem(
-            name: "AniSkip",
-            role: "Intro-/Outro-Zeitmarken (Online-Abfrage über die AniSkip-API, abschaltbar)",
-            copyright: "Daten: AniSkip und die AniSkip-Community\nAniSkip-Code: © 2021 Lexes Jan Mantiquilla",
-            license: "Daten ohne ausdrückliche Lizenz (Quellenangabe)",
-            url: URL(string: "https://github.com/aniskip")!,
-            textResource: "AniSkip"
-        ),
-        LicenseItem(
             name: "SwiftSoup",
             role: "HTML-Parser",
             copyright: "Copyright © 2009–2025 Jonathan Hedley (jsoup)\nCopyright © 2016–2025 Nabil Chatbi (Swift-Port)",

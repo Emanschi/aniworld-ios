@@ -176,12 +176,9 @@ private struct PlaybackSection: View {
                     Text("\(settings.autoplayCountdown) s").foregroundStyle(Theme.textSecondary)
                 }
             }
-            Toggle("Intro-Erkennung (automatisch)", isOn: $settings.enableSkipDetection)
+            Toggle("Intro & Outro überspringen", isOn: $settings.enableSkipDetection)
                 .tint(Theme.accent)
             if settings.enableSkipDetection {
-                Toggle("Online-Zeitmarken (AniSkip)", isOn: $settings.onlineSkipTimes)
-                    .tint(Theme.accent)
-                    .padding(.leading, 12)
                 Toggle("Intro automatisch überspringen", isOn: $settings.autoSkipIntro)
                     .tint(Theme.accent)
                     .padding(.leading, 12)
@@ -211,7 +208,7 @@ private struct PlaybackSection: View {
         } header: {
             Text("Wiedergabe")
         } footer: {
-            Text("Erkennt automatisch Intros und Outros und blendet einen passenden Sprung-Button ein. Die Zeitmarken stammen von dir („Eigene Intro-Zeiten“) oder – mit „Online-Zeitmarken“ – von AniSkip. Dafür sendet die App den Serientitel an AniList und die Folgennummer an AniSkip; deine eigenen Zeiten haben immer Vorrang. Ohne Zeitmarken wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
+            Text("Blendet bei Intro und Outro einen Sprung-Button ein. Die Zeiten legst du selbst fest – im Player für eine Folge oder die ganze Staffel („Eigene Intro-Zeiten“); sie bleiben auf deinem Gerät bzw. in deinem iCloud-Sync. Ohne eigene Zeiten wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
         }
     }
 }

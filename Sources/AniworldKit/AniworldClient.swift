@@ -16,34 +16,28 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
 
     public convenience init(baseURL: URL = AniworldClient.defaultBaseURL) {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-        // Skip times go to Application Support (not purged like Caches) so they stay for offline downloads.
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        // Remove the cache of the former online skip-time lookup (no longer used).
+        if let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            try? FileManager.default.removeItem(at: support.appendingPathComponent("AniworldKit/aniskip-cache.json"))
+        }
         self.init(baseURL: baseURL, http: HTTPClient(), extractors: .default,
-                  genreCacheDirectory: caches?.appendingPathComponent("AniworldKit/genres", isDirectory: true),
-                  skipCacheFile: support?.appendingPathComponent("AniworldKit/aniskip-cache.json"))
+                  genreCacheDirectory: caches?.appendingPathComponent("AniworldKit/genres", isDirectory: true))
     }
 
     init(baseURL: URL, http: HTTPClient, extractors: ExtractorRegistry,
-         skipTransport: HTTPFetching = URLSessionTransport(), genreCacheDirectory: URL? = nil,
-         skipCacheFile: URL? = nil) {
+         genreCacheDirectory: URL? = nil) {
         self.baseURL = baseURL
         self.http = http
         // Genre lists are many small pages; a shorter gap with a few requests in flight keeps a
         // large genre at a few seconds. 429/5xx still back off through HTTPClient.
         self.pagingHTTP = http.withThrottle(RequestThrottle(gap: .milliseconds(150)))
         self.resolver = StreamResolver(http: http, extractors: extractors)
-        self.onlineSkip = OnlineSkipClient(transport: skipTransport, cacheFile: skipCacheFile)
         self.genreDiskCache = genreCacheDirectory
     }
 
     private let pagingHTTP: HTTPClient
     private let genreDiskCache: URL?
 
-    private let onlineSkip: OnlineSkipClient
-
-    public func onlineSkipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
-        await onlineSkip.skipTimes(seriesTitle: seriesTitle, seriesSlug: seriesSlug, season: season, episode: episode)
-    }
 
     private func url(_ path: String) -> URL { Support.absoluteURL(path, base: baseURL)! }
 
@@ -196,8 +190,7 @@ public final class AniworldClient: AniworldService, @unchecked Sendable {
         CalendarParser.parse(try await http.getText(url("/animekalender")), baseURL: baseURL)
     }
 
-    /// No bundled skip times (the planned offline database never shipped); online times come from
-    /// `onlineSkipTimes`, own times from the app's library.
+    /// No built-in skip times: intro/outro times are defined by the user and kept in the app's library.
     public func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
         []
     }
