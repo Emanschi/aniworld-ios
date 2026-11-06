@@ -5,7 +5,12 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 
 ## Git & Push
 
-- Gearbeitet wird auf dem Branch `dev`. Nicht direkt auf `main` committen.
+- Gearbeitet wird auf einem eigenen Feature-Branch, der von `dev` abzweigt, benannt nach Person und
+  Thema: `emanschi/<thema>` bzw. `axsel/<thema>` (z. B. `emanschi/streak-erinnerung`). Ein Branch pro
+  Aufgabe, kurzlebig halten.
+- Nicht direkt auf `dev` oder `main` committen. Feature-Branches kommen per Pull Request nach `dev`;
+  vor dem PR `dev` in den Branch mergen und Konflikte dort lösen.
+- Fremde Feature-Branches (vom jeweils anderen) nicht ändern, rebasen oder mergen, außer der User sagt es.
 - Commits nur **lokal**. Vor jedem `git push` (egal welcher Branch) dem User Bescheid sagen und
   **auf seine ausdrückliche Bestätigung warten**. Eine frühere Freigabe gilt nicht für spätere Pushes.
 - Keine Force-Pushes, kein Löschen von Remote-Branches oder Tags, keine Release-Tags (`v*`) ohne Freigabe.
