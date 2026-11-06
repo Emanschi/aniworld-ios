@@ -36,10 +36,6 @@ public protocol AniworldService: Sendable {
     /// Liefert Intro-, Outro- und Recap-Zeitmarken für eine Episode (oder leer, falls keine vorliegen).
     func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime]
 
-    /// Online-Zeitmarken von AniSkip (über AniList → MyAnimeList-ID). Leer bei keinem Treffer oder offline.
-    /// Die App ruft das nur auf, wenn der Nutzer Online-Skip-Zeiten eingeschaltet hat.
-    func onlineSkipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime]
-
     /// Genres offered by the site (language pseudo-genres excluded). May be empty.
     func genres() async throws -> [GenreRef]
 
@@ -73,10 +69,6 @@ public extension AniworldService {
 
 public extension AniworldService {
     func skipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
-        []
-    }
-
-    func onlineSkipTimes(seriesTitle: String, seriesSlug: String, season: Int, episode: Int) async -> [SkipTime] {
         []
     }
 }

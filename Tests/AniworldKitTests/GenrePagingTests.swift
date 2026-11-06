@@ -19,7 +19,7 @@ final class GenrePagingTests: XCTestCase {
     private func makeClient(_ http: FakeHTTP, cache: URL?) -> AniworldClient {
         AniworldClient(baseURL: AniworldClient.defaultBaseURL,
                        http: HTTPClient(transport: http, throttle: RequestThrottle(gap: .zero), backoffScale: 0),
-                       extractors: .default, skipTransport: FakeHTTP(), genreCacheDirectory: cache)
+                       extractors: .default, genreCacheDirectory: cache)
     }
 
     func testPagesMergeInOrderWithProgressAndDiskCache() async throws {

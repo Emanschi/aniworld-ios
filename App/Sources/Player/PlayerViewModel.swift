@@ -243,27 +243,17 @@ final class PlayerViewModel {
         }
     }
 
-    /// Looks up intro/outro times (bundled database, works offline) for the current episode.
+    /// Looks up built-in intro/outro times for the current episode (currently none; own times are merged in
+    /// `recomputeSkipTimes()`).
     private func loadSkipTimes(service: AniworldService, gen: Int) {
         skipTimesTask = Task { [weak self, series, episode] in
             guard let self else { return }
-            var times = await service.skipTimes(
+            let times = await service.skipTimes(
                 seriesTitle: series.title,
                 seriesSlug: series.slug,
                 season: episode.season,
                 episode: episode.number
             )
-            // AniSkip only when nothing is bundled and the user allows online lookups.
-            // Own times still win in `recomputeSkipTimes()`.
-            if times.isEmpty, self.settings?.enableSkipDetection == true, self.settings?.onlineSkipTimes == true,
-               self.library?.isOnlineSkipDisabled(seriesSlug: series.slug) != true {
-                times = await service.onlineSkipTimes(
-                    seriesTitle: series.title,
-                    seriesSlug: series.slug,
-                    season: episode.season,
-                    episode: episode.number
-                )
-            }
             guard gen == self.generation, !Task.isCancelled else { return }
             self.databaseSkipTimes = times
             self.skipLookupDone = true
@@ -683,11 +673,10 @@ final class PlayerViewModel {
 
     /// Merges custom and database times: custom intro/outro replace the database ones of the same kind.
     private func recomputeSkipTimes() {
-        guard let library else { skipTimes = SkipTimeAlignment.align(databaseSkipTimes, toDuration: duration); return }
+        guard let library else { skipTimes = databaseSkipTimes; return }
         let custom = library.customSkip(seriesSlug: series.slug, season: episode.season, episode: episode.number)
         customSkip = custom
-        // AniSkip times may come from a differently long version of the episode.
-        var result = SkipTimeAlignment.align(databaseSkipTimes, toDuration: duration)
+        var result = databaseSkipTimes
         if let custom {
             if custom.hasIntro {
                 result.removeAll { $0.skipType.isOpening }
