@@ -62,10 +62,11 @@ extension WidgetSnapshot {
         }
         var mondayCalendar = calendar
         mondayCalendar.firstWeekday = 2  // Woche Mo–So, wie in der App
-        if !mondayCalendar.isDate(generatedAt, equalTo: date, toGranularity: .weekOfYear) {
+        // Intervall der Schreib-Woche/-Monat: liegt `date` darin, gelten die Werte noch.
+        if mondayCalendar.dateInterval(of: .weekOfYear, for: generatedAt)?.contains(date) != true {
             copy.week = WidgetSnapshot.Period()
         }
-        if !calendar.isDate(generatedAt, equalTo: date, toGranularity: .month) {
+        if calendar.dateInterval(of: .month, for: generatedAt)?.contains(date) != true {
             copy.month = WidgetSnapshot.Period()
         }
         return copy
@@ -104,7 +105,8 @@ enum WidgetSampleData {
             WidgetSnapshot.ContinueItem(slug: "one-piece", title: "One Piece", episodeLabel: "S1 · F3",
                                         progress: 0.8, remainingSeconds: 5 * 60, updatedAt: now, coverFileName: nil),
             WidgetSnapshot.ContinueItem(slug: "jujutsu-kaisen", title: "Jujutsu Kaisen", episodeLabel: "S1 · F7",
-                                        progress: 0.4, remainingSeconds: 14 * 60, updatedAt: now, coverFileName: nil)
+                                        progress: 1, remainingSeconds: 0, updatedAt: now, coverFileName: nil,
+                                        isNextEpisode: true)
         ]
         return s
     }
