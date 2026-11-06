@@ -157,7 +157,7 @@ struct MockAniworldService: AniworldService {
         try await Task.sleep(for: latency)
         let all = Self.sampleSeries
         return [
-            CalendarDay(title: "Heute", entries: all.prefix(3).enumerated().map { offset, series in
+            CalendarDay(title: "Heute", entries: all.prefix(3).enumerated().map { offset, series -> CalendarEntry in
                 if offset == 0 {
                     // Dub lags behind the subs.
                     return CalendarEntry(id: "today-\(series.slug)", series: series, info: "S01E05", releases: [
