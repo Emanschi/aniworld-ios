@@ -281,6 +281,7 @@ struct AllSeriesView: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.textTertiary)
@@ -466,7 +467,7 @@ struct ReleaseCalendarView: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 if !entry.releases.isEmpty {
-                    ForEach(Array(Self.releaseLines(entry.releases).prefix(3).enumerated()), id: \.offset) { _, line in
+                    ForEach(Array(Self.releaseLines(entry.releases).enumerated()), id: \.offset) { _, line in
                         CalendarReleaseLine(line: line)
                     }
                 } else if !entry.info.isEmpty {
@@ -478,6 +479,7 @@ struct ReleaseCalendarView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.textTertiary)
@@ -499,13 +501,26 @@ fileprivate struct CalendarReleaseLineData {
         guard upper.hasPrefix("S"), let eIndex = upper.firstIndex(of: "E"),
               let season = Int(upper[upper.index(after: upper.startIndex)..<eIndex]),
               let episode = Int(upper[upper.index(after: eIndex)...]) else { return code }
-        return "Staffel \(season) · Folge \(episode)"
+        return season == 0 ? "Film \(episode)" : "Staffel \(season) · Folge \(episode)"
+    }
+
+    /// "S01E05" -> "S1 · F5", "S00E01" -> "Film 1"; for narrow layouts.
+    var compactEpisodeText: String {
+        let upper = code.uppercased()
+        guard upper.hasPrefix("S"), let eIndex = upper.firstIndex(of: "E"),
+              let season = Int(upper[upper.index(after: upper.startIndex)..<eIndex]),
+              let episode = Int(upper[upper.index(after: eIndex)...]) else { return code }
+        return season == 0 ? "Film \(episode)" : "S\(season) · F\(episode)"
     }
 
     var timeText: String { time.isEmpty ? "" : "\(time) Uhr" }
 
     var detailText: String {
         [episodeText, timeText].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    var compactDetailText: String {
+        [compactEpisodeText, time].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     var accessibilityText: String {
@@ -526,13 +541,20 @@ private struct CalendarReleaseLine: View {
             ForEach(Array(line.languages.enumerated()), id: \.offset) { _, language in
                 pill(language)
             }
-            Text(line.detailText)
-                .font(.footnote)
-                .foregroundStyle(Theme.textSecondary)
-                .lineLimit(1)
+            ViewThatFits(in: .horizontal) {
+                detail(line.detailText)
+                detail(line.compactDetailText)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(line.accessibilityText)
+    }
+
+    private func detail(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Theme.textSecondary)
+            .lineLimit(1)
     }
 
     private func pill(_ language: StreamLanguage?) -> some View {
