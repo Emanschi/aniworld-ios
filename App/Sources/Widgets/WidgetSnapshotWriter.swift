@@ -155,8 +155,10 @@ final class WidgetSnapshotWriter {
         snap.streak.todayDone = streak.todayDone
         snap.streak.lastSevenDays = streak.lastSevenDays.map { WidgetSnapshot.Day(date: $0.date, done: $0.done) }
 
-        // Woche: Kalenderwoche der aktuellen Locale; Monat: wie in der Statistik.
-        let weekInterval = calendar.dateInterval(of: .weekOfYear, for: now)
+        // Woche: immer Montag bis Sonntag (passend zum Mo–So-Diagramm); Monat: wie in der Statistik.
+        var mondayCalendar = calendar
+        mondayCalendar.firstWeekday = 2
+        let weekInterval = mondayCalendar.dateInterval(of: .weekOfYear, for: now)
             ?? DateInterval(start: calendar.startOfDay(for: now), duration: 7 * 86_400)
         let week = WatchStatsCalculator(sessions: stats.sessions, interval: weekInterval, calendar: calendar,
                                         seriesMeta: stats.seriesMeta).compute()

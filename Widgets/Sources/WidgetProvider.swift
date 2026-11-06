@@ -60,7 +60,9 @@ extension WidgetSnapshot {
         if streak.current > 0 && shift + lastDoneOffset > 1 {
             copy.streak.current = 0
         }
-        if !calendar.isDate(generatedAt, equalTo: date, toGranularity: .weekOfYear) {
+        var mondayCalendar = calendar
+        mondayCalendar.firstWeekday = 2  // Woche Mo–So, wie in der App
+        if !mondayCalendar.isDate(generatedAt, equalTo: date, toGranularity: .weekOfYear) {
             copy.week = WidgetSnapshot.Period()
         }
         if !calendar.isDate(generatedAt, equalTo: date, toGranularity: .month) {
