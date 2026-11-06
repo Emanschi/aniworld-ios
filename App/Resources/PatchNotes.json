@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.5.1",
+    "date": "2026-11-06",
+    "notes": [
+      "Kalender: Jede Sprache steht jetzt mit ihrer eigenen Folge da (z. B. GerDub Folge 2, GerSub Folge 5). Vorher wurde nur eine zufällige Sprache gezeigt, dadurch schienen die Folgen durcheinander.",
+      "Kalender: Alle Folgen eines Tages werden angezeigt, Filme heißen „Film 1“ statt „Staffel 0“, und auf kleinen iPhones bleibt die Uhrzeit lesbar.",
+      "Widgets funktionieren jetzt auch, wenn AltStore oder SideStore die App beim Installieren neu signieren.",
+      "Weiterschauen-Widget: Fertig geschaute Serien bleiben drin und zeigen „Nächste Folge“.",
+      "Ein Tipp auf ein Widget geht nicht mehr verloren, wenn gerade die Neuigkeiten oder die Einrichtung angezeigt werden, und der Player startet nicht mehr hinter der Serienseite."
+    ]
+  },
+  {
     "version": "0.5.0",
     "date": "2026-11-06",
     "notes": [

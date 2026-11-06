@@ -138,8 +138,8 @@ struct StatsWidgetView: View {
     // MARK: Large
 
     private func large(_ s: WidgetSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     header("Diese Woche")
                     Spacer()
@@ -147,7 +147,7 @@ struct StatsWidgetView: View {
                         .font(.system(size: 18, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.white)
                 }
-                barChart(s.week.weekdaySeconds, height: 78, highlightToday: true)
+                barChart(s.week.weekdaySeconds, height: 58, highlightToday: true)
                 HStack(alignment: .top, spacing: 14) {
                     metric("\(s.week.completedEpisodes)", "Folgen", size: 16)
                     metric("\(s.week.seriesCount)", "Serien", size: 16)
@@ -157,11 +157,11 @@ struct StatsWidgetView: View {
                     Spacer(minLength: 0)
                 }
             }
-            .padding(12)
+            .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(WidgetTheme.surface))
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     HStack(spacing: 5) {
                         Image(systemName: "calendar")
@@ -176,7 +176,10 @@ struct StatsWidgetView: View {
                         .font(.system(size: 18, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.white)
                 }
-                barChart(s.month.weekdaySeconds, height: 66, highlightToday: false)
+                barChart(s.month.weekdaySeconds, height: 46, highlightToday: false)
+                Text("nach Wochentag")
+                    .font(WidgetTheme.font(9, .medium))
+                    .foregroundStyle(WidgetTheme.textTertiary)
                 HStack(alignment: .top, spacing: 14) {
                     metric("\(s.month.completedEpisodes)", "Folgen", size: 16)
                     metric("\(s.month.seriesCount)", "Serien", size: 16)
@@ -186,7 +189,7 @@ struct StatsWidgetView: View {
                     Spacer(minLength: 0)
                 }
             }
-            .padding(12)
+            .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(WidgetTheme.surface))
 

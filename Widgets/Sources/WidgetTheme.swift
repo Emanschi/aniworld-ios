@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WidgetKit
 
 /// Farben und Hilfen der Widgets (Kopie der relevanten Werte aus dem App-Theme,
@@ -67,9 +68,10 @@ enum WidgetFormat {
         return "\(minutes) Min."
     }
 
-    /// "noch 12 Min."
+    /// "noch 12 Min."; leer, wenn nichts mehr übrig ist.
     static func remaining(_ seconds: Double) -> String {
-        let minutes = max(1, Int((max(0, seconds) / 60).rounded(.up)))
+        if seconds <= 0 { return "" }
+        let minutes = max(1, Int((seconds / 60).rounded(.up)))
         if minutes >= 60 { return "noch \(minutes / 60) Std. \(minutes % 60) Min." }
         return "noch \(minutes) Min."
     }
@@ -132,6 +134,24 @@ struct WidgetCoverView: View {
                     .minimumScaleFactor(0.5)
             }
         }
+    }
+}
+
+/// "Nächste Folge" mit kleinem Symbol (statt Fortschritt / Restzeit).
+struct WidgetNextEpisodeLabel: View {
+    var size: CGFloat = 11
+    var color: Color = WidgetTheme.textSecondary
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "forward.end.fill")
+                .font(.system(size: size - 2, weight: .bold))
+            Text("Nächste Folge")
+                .font(WidgetTheme.font(size))
+        }
+        .foregroundStyle(color)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
     }
 }
 

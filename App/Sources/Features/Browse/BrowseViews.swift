@@ -281,6 +281,7 @@ struct AllSeriesView: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.textTertiary)
@@ -438,6 +439,23 @@ struct ReleaseCalendarView: View {
         }
     }
 
+    /// Merges sub releases with identical code and time into one line; the dub always stays on its own.
+    fileprivate static func releaseLines(_ releases: [CalendarRelease]) -> [CalendarReleaseLineData] {
+        var lines: [CalendarReleaseLineData] = []
+        for release in releases {
+            let isSub = release.language == .germanSub || release.language == .englishSub
+            if isSub, let index = lines.firstIndex(where: {
+                $0.code == release.code && $0.time == release.time
+                    && $0.languages.allSatisfy { $0 == .germanSub || $0 == .englishSub }
+            }) {
+                lines[index].languages.append(release.language)
+            } else {
+                lines.append(CalendarReleaseLineData(code: release.code, time: release.time, languages: [release.language]))
+            }
+        }
+        return lines
+    }
+
     private func entryRow(_ entry: CalendarEntry) -> some View {
         HStack(spacing: 12) {
             SeriesCover(series: entry.series, cornerRadius: 8)
@@ -448,7 +466,11 @@ struct ReleaseCalendarView: View {
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                if !entry.info.isEmpty {
+                if !entry.releases.isEmpty {
+                    ForEach(Array(Self.releaseLines(entry.releases).enumerated()), id: \.offset) { _, line in
+                        CalendarReleaseLine(line: line)
+                    }
+                } else if !entry.info.isEmpty {
                     Text(entry.info)
                         .font(.footnote)
                         .foregroundStyle(Theme.textSecondary)
@@ -457,6 +479,7 @@ struct ReleaseCalendarView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.textTertiary)
@@ -464,6 +487,86 @@ struct ReleaseCalendarView: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.surface))
         .contentShape(Rectangle())
+    }
+}
+
+fileprivate struct CalendarReleaseLineData {
+    var code: String
+    var time: String
+    var languages: [StreamLanguage?]
+
+    /// "S01E05" -> "Staffel 1 · Folge 5"; falls back to the raw code.
+    var episodeText: String {
+        let upper = code.uppercased()
+        guard upper.hasPrefix("S"), let eIndex = upper.firstIndex(of: "E"),
+              let season = Int(upper[upper.index(after: upper.startIndex)..<eIndex]),
+              let episode = Int(upper[upper.index(after: eIndex)...]) else { return code }
+        return season == 0 ? "Film \(episode)" : "Staffel \(season) · Folge \(episode)"
+    }
+
+    /// "S01E05" -> "S1 · F5", "S00E01" -> "Film 1"; for narrow layouts.
+    var compactEpisodeText: String {
+        let upper = code.uppercased()
+        guard upper.hasPrefix("S"), let eIndex = upper.firstIndex(of: "E"),
+              let season = Int(upper[upper.index(after: upper.startIndex)..<eIndex]),
+              let episode = Int(upper[upper.index(after: eIndex)...]) else { return code }
+        return season == 0 ? "Film \(episode)" : "S\(season) · F\(episode)"
+    }
+
+    var timeText: String { time.isEmpty ? "" : "\(time) Uhr" }
+
+    var detailText: String {
+        [episodeText, timeText].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    var compactDetailText: String {
+        [compactEpisodeText, time].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    var accessibilityText: String {
+        let names = languages.map { $0?.displayName ?? "Unbekannte Sprache" }.joined(separator: " und ")
+        let label = languages.first.flatMap { $0 } == .germanDub && languages.count == 1 ? "Deutsche Synchro" : names
+        var parts: [String] = []
+        if !episodeText.isEmpty { parts.append(episodeText.replacingOccurrences(of: " · ", with: ", ")) }
+        if !timeText.isEmpty { parts.append(timeText) }
+        return parts.isEmpty ? label : "\(label): \(parts.joined(separator: ", "))"
+    }
+}
+
+private struct CalendarReleaseLine: View {
+    let line: CalendarReleaseLineData
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(line.languages.enumerated()), id: \.offset) { _, language in
+                pill(language)
+            }
+            ViewThatFits(in: .horizontal) {
+                detail(line.detailText)
+                detail(line.compactDetailText)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line.accessibilityText)
+    }
+
+    private func detail(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Theme.textSecondary)
+            .lineLimit(1)
+    }
+
+    private func pill(_ language: StreamLanguage?) -> some View {
+        let isDub = language == .germanDub
+        return Text(language?.shortName ?? "?")
+            .font(.system(.caption2, design: .rounded).weight(.bold))
+            .foregroundStyle(isDub ? Color.white : Theme.textSecondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(isDub ? Theme.accent : Theme.surfaceHigh))
+            .lineLimit(1)
+            .fixedSize()
     }
 }
 

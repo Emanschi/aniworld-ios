@@ -54,6 +54,21 @@ struct ContinueWatchingWidgetView: View {
         }
     }
 
+    /// "S1 · F5" bzw. "nach S1 · F5", wenn die nächste Folge ansteht.
+    private func episodeText(_ item: WidgetSnapshot.ContinueItem) -> String {
+        item.isNextEpisode ? "nach \(item.episodeLabel)" : item.episodeLabel
+    }
+
+    @ViewBuilder
+    private func remainingText(_ item: WidgetSnapshot.ContinueItem, size: CGFloat, color: Color) -> some View {
+        let text = WidgetFormat.remaining(item.remainingSeconds)
+        if !text.isEmpty {
+            Text(text)
+                .font(WidgetTheme.font(size))
+                .foregroundStyle(color)
+        }
+    }
+
     // MARK: Small
 
     private var small: some View {
@@ -64,14 +79,18 @@ struct ContinueWatchingWidgetView: View {
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.white)
                 .lineLimit(2)
-            Text(item.episodeLabel)
+            Text(episodeText(item))
                 .font(WidgetTheme.font(12))
                 .foregroundStyle(Color.white.opacity(0.8))
-            WidgetProgressBar(progress: item.progress, height: 4)
-                .padding(.vertical, 2)
-            Text(WidgetFormat.remaining(item.remainingSeconds))
-                .font(WidgetTheme.font(10))
-                .foregroundStyle(Color.white.opacity(0.7))
+                .lineLimit(1)
+            if item.isNextEpisode {
+                WidgetNextEpisodeLabel(size: 11, color: Color.white.opacity(0.85))
+                    .padding(.vertical, 2)
+            } else {
+                WidgetProgressBar(progress: item.progress, height: 4)
+                    .padding(.vertical, 2)
+                remainingText(item, size: 10, color: Color.white.opacity(0.7))
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -87,9 +106,11 @@ struct ContinueWatchingWidgetView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         ZStack(alignment: .bottom) {
                             WidgetCoverView(title: item.title, fileName: item.coverFileName)
-                            WidgetProgressBar(progress: item.progress, height: 3)
-                                .padding(.horizontal, 6)
-                                .padding(.bottom, 6)
+                            if !item.isNextEpisode {
+                                WidgetProgressBar(progress: item.progress, height: 3)
+                                    .padding(.horizontal, 6)
+                                    .padding(.bottom, 6)
+                            }
                         }
                         .frame(height: 82)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -98,11 +119,23 @@ struct ContinueWatchingWidgetView: View {
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(Color.white)
                             .lineLimit(1)
-                        Text("\(item.episodeLabel) · \(WidgetFormat.remaining(item.remainingSeconds))")
-                            .font(WidgetTheme.font(10))
-                            .foregroundStyle(WidgetTheme.textSecondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                        if item.isNextEpisode {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(episodeText(item))
+                                    .font(WidgetTheme.font(10))
+                                    .foregroundStyle(WidgetTheme.textSecondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                WidgetNextEpisodeLabel(size: 10, color: WidgetTheme.accent)
+                            }
+                        } else {
+                            let remaining = WidgetFormat.remaining(item.remainingSeconds)
+                            Text(remaining.isEmpty ? item.episodeLabel : "\(item.episodeLabel) · \(remaining)")
+                                .font(WidgetTheme.font(10))
+                                .foregroundStyle(WidgetTheme.textSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -115,28 +148,31 @@ struct ContinueWatchingWidgetView: View {
     // MARK: Large
 
     private var large: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Weiterschauen")
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.white)
             ForEach(Array(items.prefix(4))) { item in
                 Link(destination: WidgetShared.seriesURL(slug: item.slug)) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         WidgetCoverView(title: item.title, fileName: item.coverFileName)
-                            .frame(width: 52, height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        VStack(alignment: .leading, spacing: 4) {
+                            .frame(width: 44, height: 60)
+                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(item.title)
                                 .font(.system(size: 14, weight: .bold, design: .rounded))
                                 .foregroundStyle(Color.white)
                                 .lineLimit(1)
-                            Text(item.episodeLabel)
+                            Text(episodeText(item))
                                 .font(WidgetTheme.font(12))
                                 .foregroundStyle(WidgetTheme.textSecondary)
-                            WidgetProgressBar(progress: item.progress, height: 4)
-                            Text(WidgetFormat.remaining(item.remainingSeconds))
-                                .font(WidgetTheme.font(11))
-                                .foregroundStyle(WidgetTheme.textTertiary)
+                                .lineLimit(1)
+                            if item.isNextEpisode {
+                                WidgetNextEpisodeLabel(size: 11, color: WidgetTheme.accent)
+                            } else {
+                                WidgetProgressBar(progress: item.progress, height: 4)
+                                remainingText(item, size: 11, color: WidgetTheme.textTertiary)
+                            }
                         }
                         Spacer(minLength: 0)
                     }
@@ -145,7 +181,7 @@ struct ContinueWatchingWidgetView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

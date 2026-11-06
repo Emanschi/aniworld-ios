@@ -9,7 +9,7 @@ version entry. The result is attached to the GitHub Release as `altstore-source.
 stable source URL is
   https://github.com/<owner>/aniworld-ios/releases/latest/download/altstore-source.json
 """
-import argparse, datetime, json, os
+import argparse, datetime, json, os, plistlib, zipfile
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--ipa", required=True)
@@ -28,10 +28,23 @@ data = json.loads(raw)
 ipa_url = f"https://github.com/{a.repo}/releases/download/{tag}/AniWorld.ipa"
 date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 size = os.path.getsize(a.ipa)
+
+
+def ipa_build_version(path):
+    """CFBundleVersion of the app inside the IPA (AltStore compares it with the installed build)."""
+    with zipfile.ZipFile(path) as z:
+        for name in z.namelist():
+            parts = name.split("/")
+            if len(parts) == 3 and parts[0] == "Payload" and parts[1].endswith(".app") and parts[2] == "Info.plist":
+                return str(plistlib.loads(z.read(name)).get("CFBundleVersion", "1"))
+    return "1"
+
+
+build = ipa_build_version(a.ipa)
 data["sourceURL"] = f"https://github.com/{a.repo}/releases/latest/download/altstore-source.json"
 for app in data["apps"]:
     v = app["versions"][0]
-    v.update(version=a.version, date=date, size=size, downloadURL=ipa_url)
+    v.update(version=a.version, buildVersion=build, date=date, size=size, downloadURL=ipa_url)
     # legacy (AltStore < 1.5) top-level fields
     app.update(version=a.version, versionDate=date, size=size, downloadURL=ipa_url)
 
@@ -39,4 +52,4 @@ os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
 with open(a.out, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
-print(f"wrote {a.out}: version {a.version}, {size} bytes, {ipa_url}")
+print(f"wrote {a.out}: version {a.version} (build {build}), {size} bytes, {ipa_url}")

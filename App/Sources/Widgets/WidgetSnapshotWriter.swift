@@ -18,10 +18,12 @@ final class WidgetSnapshotWriter {
     /// Zuletzt geschriebener Stand (mit `generatedAt` = distantPast), um unnötige Writes zu vermeiden.
     private var lastWritten: WidgetSnapshot?
     private var failedCovers = Set<String>()
-    private var isWriting = false
+    private var writeTask: Task<Void, Never>?
     private var writeAgain = false
+    private var bgTaskID = UIBackgroundTaskIdentifier.invalid
+    private var activeFlushes = 0
 
-    private static let coverMaxWidth: CGFloat = 300
+    private nonisolated static let coverMaxWidth: CGFloat = 480
     private static let maxContinueItems = 4
 
     init(stats: WatchStatsStore, library: LibraryStore) {
@@ -47,6 +49,7 @@ final class WidgetSnapshotWriter {
 
     /// App wird aktiv: Stand prüfen (z. B. neuer Tag).
     func appBecameActive() {
+        failedCovers.removeAll()
         scheduleUpdate()
     }
 
@@ -54,15 +57,24 @@ final class WidgetSnapshotWriter {
     func flush() {
         debounceTask?.cancel()
         debounceTask = nil
-        var bgTask = UIBackgroundTaskIdentifier.invalid
-        bgTask = UIApplication.shared.beginBackgroundTask(withName: "widget-snapshot") {
-            UIApplication.shared.endBackgroundTask(bgTask)
-            bgTask = .invalid
+        if bgTaskID == .invalid {
+            bgTaskID = UIApplication.shared.beginBackgroundTask(withName: "widget-snapshot") { [weak self] in
+                MainActor.assumeIsolated { self?.endBackgroundTask() }
+            }
         }
+        activeFlushes += 1
         Task { [weak self] in
-            await self?.writeNow()
-            if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+            guard let self else { return }
+            await self.writeNow()
+            self.activeFlushes -= 1
+            if self.activeFlushes <= 0 { self.endBackgroundTask() }
         }
+    }
+
+    private func endBackgroundTask() {
+        guard bgTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(bgTaskID)
+        bgTaskID = .invalid
     }
 
     // MARK: Triggers
@@ -94,14 +106,22 @@ final class WidgetSnapshotWriter {
 
     private func writeNow() async {
         guard WidgetShared.containerURL != nil else { return }
-        // Nicht parallel schreiben; währenddessen eingehende Änderungen holen wir danach nach.
-        if isWriting { writeAgain = true; return }
-        isWriting = true
-        defer { isWriting = false }
-        repeat {
-            writeAgain = false
-            await buildAndWrite()
-        } while writeAgain
+        // Läuft schon ein Schreibvorgang, holen wir die neue Änderung danach nach und warten darauf.
+        if let running = writeTask {
+            writeAgain = true
+            await running.value
+            return
+        }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                self.writeAgain = false
+                await self.buildAndWrite()
+            } while self.writeAgain
+            self.writeTask = nil
+        }
+        writeTask = task
+        await task.value
     }
 
     private func buildAndWrite() async {
@@ -137,7 +157,6 @@ final class WidgetSnapshotWriter {
     private func continueEntries() -> [WatchEntry] {
         Array(
             library.history
-                .filter { !$0.isFinished }
                 .sorted { $0.updatedAt > $1.updatedAt }
                 .prefix(Self.maxContinueItems)
         )
@@ -170,14 +189,21 @@ final class WidgetSnapshotWriter {
             let name = Self.coverFileName(slug: entry.series.slug)
             let hasCover = entry.series.coverURL != nil
                 && FileManager.default.fileExists(atPath: coversDir.appendingPathComponent(name).path)
+            let finished = entry.isFinished
+            // Quantisieren (Fortschritt 1 %, Restzeit ganze Minuten, updatedAt ganze Sekunden), damit
+            // beim Schauen nicht ständig geschrieben wird und der Vergleich mit dem Stand auf der
+            // Platte (ISO8601 ohne Bruchteile) stimmt.
+            let progress = finished ? 0 : (entry.fraction * 100).rounded() / 100
+            let remaining = finished ? 0 : (entry.remaining / 60).rounded(.up) * 60
             return WidgetSnapshot.ContinueItem(
                 slug: entry.series.slug,
                 title: entry.series.title,
                 episodeLabel: Self.episodeLabel(entry.episode),
-                progress: entry.fraction,
-                remainingSeconds: entry.remaining,
-                updatedAt: entry.updatedAt,
-                coverFileName: hasCover ? name : nil
+                progress: progress,
+                remainingSeconds: remaining,
+                updatedAt: Date(timeIntervalSince1970: entry.updatedAt.timeIntervalSince1970.rounded(.down)),
+                coverFileName: hasCover ? name : nil,
+                isNextEpisode: finished
             )
         }
         return snap
@@ -226,7 +252,7 @@ final class WidgetSnapshotWriter {
         return (cleaned.isEmpty ? "cover" : cleaned) + ".jpg"
     }
 
-    private static func downloadCover(from url: URL, to file: URL) async -> Bool {
+    private nonisolated static func downloadCover(from url: URL, to file: URL) async -> Bool {
         guard let (data, response) = try? await URLSession.shared.data(from: url) else { return false }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return false }
         guard let image = UIImage(data: data) else { return false }
@@ -240,7 +266,7 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    private static func downscale(_ image: UIImage, maxWidth: CGFloat) -> UIImage {
+    private nonisolated static func downscale(_ image: UIImage, maxWidth: CGFloat) -> UIImage {
         let size = image.size
         guard size.width > maxWidth, size.width > 0 else { return image }
         let target = CGSize(width: maxWidth, height: (size.height * maxWidth / size.width).rounded())

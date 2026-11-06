@@ -13,6 +13,7 @@ struct RootView: View {
     @State private var pendingPatchNotes: [PatchNoteEntry]?
     @State private var didCheckPatchNotes = false
     @State private var showStats = false
+    @State private var pendingDeepLink: URL?
 
     var body: some View {
         @Bindable var playback = playback
@@ -92,20 +93,46 @@ struct RootView: View {
             }
             await updates.check()
         }
-        .onChange(of: sync.showOnboarding) { _, _ in presentPatchNotesIfPossible() }
-        .onChange(of: playback.activeSession == nil) { _, _ in presentPatchNotesIfPossible() }
+        .onChange(of: sync.showOnboarding) { _, _ in processDeferred() }
+        .onChange(of: playback.activeSession == nil) { _, _ in processDeferred() }
+        .onChange(of: playback.isMinimized) { _, _ in processDeferred() }
+        .onChange(of: patchNotes == nil) { _, _ in processDeferred() }
+        .onChange(of: watcher.pendingOpenSeries == nil) { _, _ in processDeferred() }
+        .onChange(of: showStats) { _, _ in processDeferred() }
+        // Startet die Wiedergabe, verschwinden Serien-/Statistik-Sheet, sonst liefe der Player dahinter.
+        .onChange(of: playback.activeSession?.id) { _, newID in
+            if newID != nil {
+                watcher.pendingOpenSeries = nil
+                showStats = false
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active { Task { await updates.check() } }
         }
     }
 
+    /// True, solange ein Sheet von RootView oder der Player (nicht minimiert) im Vordergrund ist.
+    private var isBlockingPresentation: Bool {
+        sync.showOnboarding || patchNotes != nil || watcher.pendingOpenSeries != nil || showStats
+            || (playback.activeSession != nil && !playback.isMinimized)
+    }
+
     /// Deep Links der Widgets: aniworld://series/<slug>, aniworld://stats, aniworld://home.
+    /// Liegt gerade ein anderes Sheet oben, wird der Link gemerkt und nach dem Schließen geöffnet.
     private func handleWidgetURL(_ url: URL) {
         guard url.scheme == WidgetShared.urlScheme else { return }
+        if isBlockingPresentation {
+            pendingDeepLink = url
+        } else {
+            applyDeepLink(url)
+        }
+    }
+
+    private func applyDeepLink(_ url: URL) {
         switch url.host {
         case "series":
             let slug = url.lastPathComponent
-            guard !slug.isEmpty, slug != "/" else { return }
+            guard slug.range(of: "^[a-z0-9][a-z0-9-]*$", options: .regularExpression) != nil else { return }
             if let series = library.history.first(where: { $0.series.slug == slug })?.series
                 ?? library.favorites.first(where: { $0.series.slug == slug })?.series {
                 watcher.pendingOpenSeries = series
@@ -119,10 +146,20 @@ struct RootView: View {
         }
     }
 
+    /// Wer zuerst da war, bleibt oben; der andere (Deep Link / Patchnotes) folgt nach dem Schließen.
+    private func processDeferred() {
+        if let url = pendingDeepLink, !isBlockingPresentation {
+            pendingDeepLink = nil
+            applyDeepLink(url)
+        }
+        presentPatchNotesIfPossible()
+    }
+
     /// Shows pending patch notes only while no other sheet / cover is up.
     private func presentPatchNotesIfPossible() {
         guard let entries = pendingPatchNotes, patchNotes == nil else { return }
-        guard !sync.showOnboarding, playback.activeSession == nil else { return }
+        guard !sync.showOnboarding, playback.activeSession == nil,
+              watcher.pendingOpenSeries == nil, !showStats else { return }
         pendingPatchNotes = nil
         patchNotes = PatchNotesPayload(entries: entries)
     }
