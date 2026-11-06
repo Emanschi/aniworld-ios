@@ -117,17 +117,37 @@ public struct GenreRef: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-/// One release entry of the anime calendar.
+/// One release entry of the anime calendar (one series on one day, all its languages).
 public struct CalendarEntry: Identifiable, Hashable, Sendable {
     public var id: String
     public var series: SeriesSummary
     /// Short info line, e.g. "S02E05 · 18:00" (may be empty).
     public var info: String
+    /// The releases of this series on that day, one per language (dub first, then subs).
+    /// The site lists every language separately and the dub usually lags behind the subs.
+    public var releases: [CalendarRelease]
 
-    public init(id: String, series: SeriesSummary, info: String) {
+    public init(id: String, series: SeriesSummary, info: String, releases: [CalendarRelease] = []) {
         self.id = id
         self.series = series
         self.info = info
+        self.releases = releases
+    }
+}
+
+/// One language variant of a calendar release, e.g. "S01E05" with German subtitles at 17:10.
+public struct CalendarRelease: Hashable, Sendable {
+    /// "S01E05" (may be empty).
+    public var code: String
+    /// nil when the flag couldn't be recognised.
+    public var language: StreamLanguage?
+    /// "17:10" (may be empty).
+    public var time: String
+
+    public init(code: String, language: StreamLanguage?, time: String) {
+        self.code = code
+        self.language = language
+        self.time = time
     }
 }
 
