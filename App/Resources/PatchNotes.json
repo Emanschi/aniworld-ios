@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.1",
+    "date": "2026-11-06",
+    "notes": [
+      "Kalender: Jede Sprache steht jetzt mit ihrer eigenen Folge da (z. B. GerDub Folge 2, GerSub Folge 5). Vorher wurde nur eine zufällige Sprache gezeigt, dadurch schienen die Folgen durcheinander."
+    ]
+  },
+  {
     "version": "0.5.0",
     "date": "2026-11-06",
     "notes": [
