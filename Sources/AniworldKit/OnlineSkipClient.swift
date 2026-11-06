@@ -95,6 +95,17 @@ final class OnlineSkipClient: Sendable {
             return id
         }
 
+        /// Cached value regardless of age (fallback when offline).
+        func staleMalId(_ key: String) -> Int? {
+            load()
+            return stored.malIds[key]
+        }
+
+        func staleSkipTimes(_ key: String) -> [SkipTime]? {
+            load()
+            return stored.skips[key]
+        }
+
         func setMalId(_ id: Int, _ key: String) {
             load()
             stored.malIds[key] = id
@@ -122,7 +133,10 @@ final class OnlineSkipClient: Sendable {
         guard let malId = await resolveMalId(title: seriesTitle, slug: seriesSlug, season: season) else { return [] }
         let key = "\(malId)|\(episode)"
         if let cached = await cache.skipTimes(key) { return cached }
-        guard let times = await fetchSkipTimes(malId: malId, episode: episode) else { return [] }
+        // Offline or failed: an expired cached value is better than nothing (e.g. downloads).
+        guard let times = await fetchSkipTimes(malId: malId, episode: episode) else {
+            return await cache.staleSkipTimes(key) ?? []
+        }
         await cache.setSkipTimes(times, key)
         return times
     }
@@ -160,7 +174,9 @@ final class OnlineSkipClient: Sendable {
             case .notFound:
                 continue
             case .failed:
-                return nil // network/rate limit: don't cache, try again next time
+                // Network/rate limit: don't cache, try again next time; use an expired value meanwhile.
+                if let stale = await cache.staleMalId(key), stale > 0 { return stale }
+                return nil
             }
         }
         await cache.setMalId(0, key)

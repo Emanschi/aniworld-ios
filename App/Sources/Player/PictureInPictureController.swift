@@ -2,6 +2,7 @@ import AVFoundation
 import AVKit
 import Foundation
 import Observation
+import UIKit
 
 /// Wraps `AVPictureInPictureController` for the custom player surface.
 @MainActor
@@ -18,6 +19,8 @@ final class PictureInPictureController: NSObject, AVPictureInPictureControllerDe
     @ObservationIgnored var onRestoreRequested: (() -> Void)?
     /// True once the user tapped "back to app" in the current PiP session (false: closed with X).
     @ObservationIgnored private(set) var restoreRequested = false
+    /// PiP was started by iOS while the app went to the background (not via the button).
+    @ObservationIgnored private var startedInBackground = false
 
     func attach(to layer: AVPlayerLayer) {
         guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
@@ -61,6 +64,7 @@ final class PictureInPictureController: NSObject, AVPictureInPictureControllerDe
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 self.restoreRequested = false
+                self.startedInBackground = UIApplication.shared.applicationState != .active
                 self.setActive(true)
             }
         }
@@ -69,7 +73,15 @@ final class PictureInPictureController: NSObject, AVPictureInPictureControllerDe
     nonisolated func pictureInPictureControllerDidStopPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController) {
         DispatchQueue.main.async {
-            MainActor.assumeIsolated { self.setActive(false) }
+            MainActor.assumeIsolated {
+                // Returning to the app ends an automatically started PiP; that is not the X button,
+                // so keep playing in the full-screen player instead of closing it.
+                if self.startedInBackground && UIApplication.shared.applicationState != .background {
+                    self.restoreRequested = true
+                }
+                self.startedInBackground = false
+                self.setActive(false)
+            }
         }
     }
 

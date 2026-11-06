@@ -20,7 +20,12 @@
       "Suche: Titel mit Umlauten (ä, ö, ü) werden jetzt zuverlässig gefunden.",
       "Suche: Wird der Genre-Filter zurückgesetzt, während er noch lädt, erscheinen keine veralteten Treffer mehr.",
       "Alle Animes A–Z: Ein Filtertext, den du während des Ladens eintippst, wird jetzt direkt angewendet.",
-      "Player: Startest du eine Folge über „Weiterschauen“, zeigt die Folgenliste jetzt die ganze Staffel und „Vorherige Folge“ funktioniert."
+      "Player: Startest du eine Folge über „Weiterschauen“, zeigt die Folgenliste jetzt die ganze Staffel und „Vorherige Folge“ funktioniert.",
+      "Wird Bild-in-Bild beim Verlassen der App automatisch gestartet, läuft die Folge nach der Rückkehr jetzt im Player weiter, statt beendet zu werden.",
+      "Gespeicherte Zeitmarken werden offline auch nach längerer Zeit noch genutzt, z. B. bei älteren Downloads.",
+      "Downloads, die ohne WLAN pausiert wurden, laufen zuverlässig weiter, sobald wieder WLAN da ist.",
+      "Schlägt das Neuladen einer Genre-Liste fehl, bleibt die bisherige Liste sichtbar.",
+      "„Ganze Serie als gesehen markieren“ meldet jetzt, wenn nicht alle Staffeln geladen werden konnten."
     ]
   },
   {

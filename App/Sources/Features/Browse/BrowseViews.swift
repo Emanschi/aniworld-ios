@@ -33,7 +33,7 @@ final class GenreSeriesViewModel {
             if Task.isCancelled { return }
             isLoadingMore = false
             // Keep what already arrived; only show the error screen when nothing did.
-            if series.isEmpty { phase = .failed(error) }
+            phase = series.isEmpty ? .failed(error) : .loaded
         }
     }
 
