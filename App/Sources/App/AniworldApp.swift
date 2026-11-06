@@ -13,6 +13,7 @@ struct AniworldApp: App {
         _env = State(initialValue: env)
         // Muss vor dem Ende des App-Starts passieren (BGTaskScheduler.register).
         env.watcher.configure()
+        env.widgets.start()
     }
 
     var body: some Scene {
@@ -31,8 +32,10 @@ struct AniworldApp: App {
                     switch newPhase {
                     case .active:
                         Task { await env.watcher.runIfDue() }
+                        env.widgets.appBecameActive()
                     case .background:
                         env.watcher.scheduleBackgroundRefresh()
+                        env.widgets.flush()
                     default:
                         break
                     }
@@ -52,6 +55,7 @@ struct AppEnvironment {
     let downloads: DownloadManager
     let watcher: EpisodeWatcher
     let stats: WatchStatsStore
+    let widgets: WidgetSnapshotWriter
 
     static func live() -> AppEnvironment {
         make(service: AniworldClient())
@@ -67,7 +71,8 @@ struct AppEnvironment {
             sync: LibrarySyncService(library: library, stats: stats),
             downloads: DownloadManager(service: service, settings: settings, library: library),
             watcher: EpisodeWatcher(service: service, library: library, settings: settings),
-            stats: stats
+            stats: stats,
+            widgets: WidgetSnapshotWriter(stats: stats, library: library)
         )
     }
 }
