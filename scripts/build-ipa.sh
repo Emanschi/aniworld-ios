@@ -48,6 +48,28 @@ xcodebuild \
 APP="$DERIVED/Build/Products/Release-iphoneos/AniWorld.app"
 [[ -d "$APP" ]] || { echo "error: $APP not found" >&2; exit 1; }
 
+# Ad-hoc signature with entitlements: the build itself stays unsigned, but the App Group
+# (shared data for the widgets) must be embedded so sideloading tools (AltStore, SideStore,
+# Sideloadly, Impactor) carry it over when they re-sign with the user's own certificate.
+# Order matters: nested code first (frameworks, widget extension), the app last.
+echo "==> ad-hoc sign with entitlements"
+if [[ -d "$APP/Frameworks" ]]; then
+  find "$APP/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -print0 |
+    while IFS= read -r -d '' fw; do
+      codesign --force --sign - --timestamp=none "$fw"
+    done
+fi
+WIDGET="$APP/PlugIns/AniWorldWidgets.appex"
+[[ -d "$WIDGET" ]] || { echo "error: $WIDGET not found" >&2; exit 1; }
+codesign --force --sign - --timestamp=none \
+  --entitlements "$ROOT/Widgets/AniWorldWidgets.entitlements" "$WIDGET"
+codesign --force --sign - --timestamp=none \
+  --entitlements "$ROOT/App/AniWorld.entitlements" "$APP"
+codesign -d --entitlements - "$WIDGET" 2>/dev/null | grep -q 'group.com.aniworldios.app' \
+  || { echo "error: App Group missing in widget signature" >&2; exit 1; }
+codesign -d --entitlements - "$APP" 2>/dev/null | grep -q 'group.com.aniworldios.app' \
+  || { echo "error: App Group missing in app signature" >&2; exit 1; }
+
 echo "==> package IPA"
 STAGE="$OUT_DIR/ipa-stage"
 rm -rf "$STAGE" "$OUT_DIR/AniWorld.ipa"
