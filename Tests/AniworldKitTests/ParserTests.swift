@@ -238,7 +238,11 @@ final class CalendarParserTests: XCTestCase {
         XCTAssertEqual(first.series.slug, "fx-fighter-kurumichan")
         XCTAssertEqual(first.series.title, "FX Fighter KURUMICHAN")
         XCTAssertEqual(first.series.url.absoluteString, "https://aniworld.to/anime/stream/fx-fighter-kurumichan")
-        XCTAssertEqual(first.info, "S01E06 · 13:40")
+        // The fixture lists this series twice (German sub and English sub); they are merged into one
+        // entry and the languages are now part of `info` (previously only the first item was kept).
+        XCTAssertEqual(first.info, "S01E06 GerSub/EngSub · 13:40")
+        XCTAssertEqual(first.releases, [CalendarRelease(code: "S01E06", language: .germanSub, time: "13:40"),
+                                        CalendarRelease(code: "S01E06", language: .englishSub, time: "13:40")])
         XCTAssertNotNil(first.series.coverURL)
         XCTAssertEqual(Set(days.flatMap(\.entries).map(\.id)).count, days.flatMap(\.entries).count)
     }
@@ -255,6 +259,57 @@ final class CalendarParserTests: XCTestCase {
         XCTAssertEqual(day.displayTitle(now: noon(1), calendar: cal), "Donnerstag, 05.11.")
         XCTAssertEqual(CalendarDay(title: "roh", entries: []).displayTitle(), "roh")
         XCTAssertNil(CalendarParser.date(in: "ohne Datum"))
+    }
+
+    private static func item(_ slug: String, _ code: String, _ flag: String, _ time: String) -> String {
+        """
+        <div class="col-md-15"><a href="/anime/stream/\(slug)" target="_blank">
+        <img src="data:image/png;base64,AAAA" data-src="/public/img/cover/\(slug).png" alt="\(slug) Cover">
+        <h3 class="seriesTitle">Firefly Wedding</h3>
+        <small>\(code) <img src="data:image/png;base64,AAAA" class="flag" data-src="/public/img/\(flag).svg" alt="" title=""></small>
+        <small>~ \(time) Uhr</small></a></div>
+        """
+    }
+
+    func testGroupsLanguagesPerSeriesAndDay() throws {
+        let f = "firefly-wedding"
+        let day1 = [
+            Self.item(f, "S01E05", "japanese-english", "17:10"),
+            Self.item("other", "S02E01", "japanese-german", "10:00"),
+            Self.item(f, "S01E05", "japanese-german", "17:10"),
+            Self.item(f, "S01E05", "japanese-german", "17:10"), // exact duplicate
+            Self.item(f, "S01E02", "german", "18:30"),
+        ].joined()
+        let day2 = Self.item(f, "S01E06", "japanese-german", "17:10")
+        let html = """
+        <section class="calendarList"><h3>Donnerstag, 05.11.2026 (heute)</h3><div class="seriesListContainer">\(day1)</div></section>
+        <section class="calendarList"><h3>Freitag, 06.11.2026</h3><div class="seriesListContainer">\(day2)</div></section>
+        """
+        let days = CalendarParser.parse(html)
+        XCTAssertEqual(days.count, 2)
+        XCTAssertEqual(days[0].entries.map(\.series.slug), [f, "other"])
+        let entry = days[0].entries[0]
+        XCTAssertEqual(entry.id, "Donnerstag, 05.11.2026 (heute)|/anime/stream/firefly-wedding")
+        XCTAssertEqual(entry.releases.map(\.language), [.germanDub, .germanSub, .englishSub])
+        XCTAssertEqual(entry.releases.map(\.code), ["S01E02", "S01E05", "S01E05"])
+        XCTAssertEqual(entry.releases.map(\.time), ["18:30", "17:10", "17:10"])
+        XCTAssertEqual(entry.info, "S01E02 GerDub 18:30 · S01E05 GerSub/EngSub 17:10")
+        XCTAssertEqual(days[0].entries[1].info, "S02E01 GerSub · 10:00")
+        XCTAssertEqual(days[1].entries.count, 1)
+        XCTAssertEqual(days[1].entries[0].id, "Freitag, 06.11.2026|/anime/stream/firefly-wedding")
+        XCTAssertEqual(days[1].entries[0].releases.map(\.code), ["S01E06"])
+    }
+
+    func testInfoSharedTimeAndMissingLanguage() {
+        let rel = { (c: String, l: StreamLanguage?, t: String) in CalendarRelease(code: c, language: l, time: t) }
+        XCTAssertEqual(CalendarParser.info(for: [rel("S01E02", .germanDub, "17:10"), rel("S01E05", .germanSub, "17:10"),
+                                                 rel("S01E05", .englishSub, "17:10")]),
+                       "S01E02 GerDub · S01E05 GerSub/EngSub · 17:10")
+        XCTAssertEqual(CalendarParser.info(for: [rel("S03E03", .germanDub, "16:10"), rel("S03E06", .germanSub, "16:40"),
+                                                 rel("S03E06", .englishSub, "16:40")]),
+                       "S03E03 GerDub 16:10 · S03E06 GerSub/EngSub 16:40")
+        XCTAssertEqual(CalendarParser.info(for: [rel("S01E06", nil, "13:40")]), "S01E06 · 13:40")
+        XCTAssertEqual(CalendarParser.info(for: [rel("", nil, "")]), "")
     }
 
     func testGarbageYieldsEmpty() {

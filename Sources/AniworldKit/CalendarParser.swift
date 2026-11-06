@@ -14,23 +14,35 @@ enum CalendarParser {
             let title = ((try? section.select("h3").first()?.text()) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty, let anchors = try? section.select(".seriesListContainer a[href]") else { continue }
-            var entries: [CalendarEntry] = []
-            var seenIDs = Set<String>()
+            // One entry per series and day; the site lists every language as its own item.
+            var order: [String] = []
+            var groups: [String: (series: SeriesSummary, releases: [CalendarRelease])] = [:]
             for a in anchors.array() {
                 guard let href = try? a.attr("href") else { continue }
                 let path = Support.path(of: href)
                 let parts = path.split(separator: "/").map(String.init)
                 guard parts.count >= 3, parts[0] == "anime", parts[1] == "stream" else { continue }
                 let slug = parts[2]
-                let id = "\(title)|\(path)"
-                guard seenIDs.insert(id).inserted,
-                      let url = Support.absoluteURL("/anime/stream/\(slug)", base: baseURL) else { continue }
+                let id = "\(title)|/anime/stream/\(slug)"
+                let release = self.release(for: a)
+                if var group = groups[id] {
+                    if !group.releases.contains(release) { group.releases.append(release) }
+                    groups[id] = group
+                    continue
+                }
+                guard let url = Support.absoluteURL("/anime/stream/\(slug)", base: baseURL) else { continue }
                 let name = ((try? a.select("h3").first()?.text()) ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let cover = Support.imageSource(try? a.select("img").first())
                     .flatMap { Support.absoluteURL($0, base: baseURL) }
                 let series = SeriesSummary(slug: slug, title: name.isEmpty ? slug : name, url: url, coverURL: cover)
-                entries.append(CalendarEntry(id: id, series: series, info: info(for: a)))
+                order.append(id)
+                groups[id] = (series, [release])
+            }
+            let entries = order.compactMap { id -> CalendarEntry? in
+                guard let group = groups[id] else { return nil }
+                let releases = sorted(group.releases)
+                return CalendarEntry(id: id, series: group.series, info: info(for: releases), releases: releases)
             }
             if !entries.isEmpty { days.append(CalendarDay(title: title, entries: entries, date: date(in: title))) }
         }
@@ -44,8 +56,8 @@ enum CalendarParser {
         return calendar.date(from: DateComponents(year: y, month: mo, day: d))
     }
 
-    /// "S01E06 · 13:40" from the item's `small` texts (either part may be missing).
-    private static func info(for anchor: Element) -> String {
+    /// Code, time and language of one calendar item.
+    private static func release(for anchor: Element) -> CalendarRelease {
         var code = ""
         var time = ""
         for small in (try? anchor.select("small").array()) ?? [] {
@@ -57,6 +69,52 @@ enum CalendarParser {
                 time = m[1]
             }
         }
-        return [code, time].filter { !$0.isEmpty }.joined(separator: " · ")
+        var language: StreamLanguage?
+        for img in (try? anchor.select("img.flag").array()) ?? [] {
+            language = EpisodeParser.classifyLanguage(
+                (try? img.attr("data-src")) ?? "", (try? img.attr("src")) ?? "",
+                (try? img.attr("alt")) ?? "", (try? img.attr("title")) ?? "")
+            if language != nil { break }
+        }
+        return CalendarRelease(code: code, language: language, time: time)
+    }
+
+    /// German dub, German sub, English sub, unknown last; stable otherwise.
+    private static func sorted(_ releases: [CalendarRelease]) -> [CalendarRelease] {
+        func rank(_ l: StreamLanguage?) -> Int {
+            switch l {
+            case .germanDub: 0
+            case .germanSub: 1
+            case .englishSub: 2
+            case nil: 3
+            }
+        }
+        return releases.enumerated()
+            .sorted { rank($0.element.language) != rank($1.element.language)
+                ? rank($0.element.language) < rank($1.element.language) : $0.offset < $1.offset }
+            .map(\.element)
+    }
+
+    /// "S01E02 GerDub · S01E05 GerSub/EngSub · 17:10": releases with the same code and time are
+    /// merged; the time is appended once if all groups share it, else after each group.
+    static func info(for releases: [CalendarRelease]) -> String {
+        var groups: [(code: String, time: String, langs: [String])] = []
+        for r in releases {
+            let lang = r.language?.shortName
+            if let i = groups.firstIndex(where: { $0.code == r.code && $0.time == r.time }) {
+                if let lang, !groups[i].langs.contains(lang) { groups[i].langs.append(lang) }
+            } else {
+                groups.append((r.code, r.time, lang.map { [$0] } ?? []))
+            }
+        }
+        let times = Set(groups.map(\.time))
+        let shared = times.count == 1 ? (times.first ?? "") : nil
+        var parts = groups.map { g -> String in
+            var p = [g.code, g.langs.joined(separator: "/")]
+            if shared == nil { p.append(g.time) }
+            return p.filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        if let shared, !shared.isEmpty { parts.append(shared) }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
