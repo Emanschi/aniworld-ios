@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.5.0",
+    "date": "2026-11-06",
+    "notes": [
+      "Neu: Widgets für den Home-Bildschirm. Die Streak zeigt deine Tage am Stück samt Wochenübersicht, „Weiterschauen“ bringt dich mit einem Tipp zur nächsten Folge, und die Statistik zeigt deine Woche und deinen Monat in Zahlen.",
+      "Die Streak gibt es auch für den Sperrbildschirm."
+    ]
+  },
+  {
     "version": "0.4.2",
     "date": "2026-11-06",
     "notes": [

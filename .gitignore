@@ -7,6 +7,7 @@ DerivedData/
 build/
 *.ipa
 App/Info.plist
+Widgets/Info.plist
 .DS_Store
 Package.resolved.orig
 .claude/

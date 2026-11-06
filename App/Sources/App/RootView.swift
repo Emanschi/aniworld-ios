@@ -6,11 +6,13 @@ struct RootView: View {
     @Environment(PlaybackCoordinator.self) private var playback
     @Environment(LibrarySyncService.self) private var sync
     @Environment(EpisodeWatcher.self) private var watcher
+    @Environment(LibraryStore.self) private var library
     @Environment(\.scenePhase) private var scenePhase
     @State private var updates = AppUpdateChecker.shared
     @State private var patchNotes: PatchNotesPayload?
     @State private var pendingPatchNotes: [PatchNoteEntry]?
     @State private var didCheckPatchNotes = false
+    @State private var showStats = false
 
     var body: some View {
         @Bindable var playback = playback
@@ -70,6 +72,17 @@ struct RootView: View {
                     }
             }
         }
+        .sheet(isPresented: $showStats) {
+            NavigationStack {
+                StatsView()
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Schließen") { showStats = false }
+                        }
+                    }
+            }
+        }
+        .onOpenURL { handleWidgetURL($0) }
         .task {
             sync.start()
             if !didCheckPatchNotes {
@@ -83,6 +96,26 @@ struct RootView: View {
         .onChange(of: playback.activeSession == nil) { _, _ in presentPatchNotesIfPossible() }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active { Task { await updates.check() } }
+        }
+    }
+
+    /// Deep Links der Widgets: aniworld://series/<slug>, aniworld://stats, aniworld://home.
+    private func handleWidgetURL(_ url: URL) {
+        guard url.scheme == WidgetShared.urlScheme else { return }
+        switch url.host {
+        case "series":
+            let slug = url.lastPathComponent
+            guard !slug.isEmpty, slug != "/" else { return }
+            if let series = library.history.first(where: { $0.series.slug == slug })?.series
+                ?? library.favorites.first(where: { $0.series.slug == slug })?.series {
+                watcher.pendingOpenSeries = series
+            } else if let pageURL = URL(string: "https://aniworld.to/anime/stream/\(slug)") {
+                watcher.pendingOpenSeries = SeriesSummary(slug: slug, title: slug, url: pageURL)
+            }
+        case "stats":
+            showStats = true
+        default:
+            break // home: die App ist damit schon offen
         }
     }
 
