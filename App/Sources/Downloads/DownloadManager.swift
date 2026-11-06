@@ -451,7 +451,7 @@ final class DownloadManager {
         guard isWaitingForWiFi else { return }
         for id in ids {
             guard let job = jobs[id], job.status == .active, job.isCompressing != true,
-                  !wifiOnlyTasks.contains(id) else { continue }
+                  !wifiOnlyTasks.contains(id), !suspendedForWiFi.contains(id) else { continue }
             let matching = tasks.filter { $0.taskDescription == id }
             if matching.isEmpty {
                 requeue(id)

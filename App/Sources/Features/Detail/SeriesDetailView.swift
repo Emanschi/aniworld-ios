@@ -14,6 +14,7 @@ struct SeriesDetailView: View {
     @State private var confirmDeleteSeason = false
     @State private var confirmDeleteSeries = false
     @State private var resetPrompt: ResetScope?
+    @State private var markAllFailed = false
 
     /// What "Fortschritt zurücksetzen" applies to.
     private enum ResetScope: Equatable {
@@ -54,6 +55,11 @@ struct SeriesDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar { languageMenu }
+        .alert("Nicht alle Staffeln konnten geladen werden", isPresented: $markAllFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Die Serie wurde nicht als gesehen markiert. Prüfe deine Verbindung und versuche es erneut.")
+        }
         .confirmationDialog(
             "Alle Downloads von „\(displaySummary.title)“ löschen?",
             isPresented: $confirmDeleteSeries,
@@ -503,7 +509,11 @@ struct SeriesDetailView: View {
                     if vm.seasons.contains(where: { !$0.isFilms }) {
                         Button {
                             Task {
-                                guard let all = try? await vm.allRegularEpisodes(slug: slug, service: service) else { return }
+                                guard let all = try? await vm.allRegularEpisodes(slug: slug, service: service) else {
+                                    Haptics.error()
+                                    markAllFailed = true
+                                    return
+                                }
                                 library.markWatched(all, series: displaySummary)
                                 Haptics.success()
                             }
