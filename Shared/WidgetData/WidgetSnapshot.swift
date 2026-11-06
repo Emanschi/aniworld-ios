@@ -61,6 +61,9 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
         var updatedAt: Date
         /// File name of a small JPEG cover inside `WidgetShared.coversDirectory` (nil = no cover).
         var coverFileName: String?
+        /// The last episode was watched to the end: the widget shows "Nächste Folge" instead of
+        /// progress / remaining time (`episodeLabel` names the finished episode).
+        var isNextEpisode: Bool = false
 
         var id: String { slug }
     }
