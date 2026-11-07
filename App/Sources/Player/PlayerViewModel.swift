@@ -158,7 +158,7 @@ final class PlayerViewModel {
         cast.onEnded = { [weak self] last in self?.castDidEnd(at: last) }
 
         player.defaultRate = playbackRate
-        pip.onActiveChange ={ [weak self] active in self?.pipActiveChanged(active) }
+        pip.onActiveChange = { [weak self] active in self?.pipActiveChanged(active) }
         pip.onRestoreRequested = { [weak self] in self?.coordinator?.isMinimized = false }
         nowPlaying = NowPlayingController(handlers: .init(
             play: { [weak self] in self?.play() },
