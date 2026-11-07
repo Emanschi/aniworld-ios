@@ -102,6 +102,7 @@ final class WatchStatsStore {
             localRevision += 1
             onChange?()
         }
+        NotificationCenter.default.post(name: .watchStatsDidChange, object: nil)
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)

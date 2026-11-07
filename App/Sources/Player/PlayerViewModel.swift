@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import MediaPlayer
 import Observation
+import UIKit
 import AniworldKit
 
 /// Skip button offered by the player (Netflix-style), see `PlayerViewModel.skipPill`.
@@ -50,6 +51,9 @@ final class PlayerViewModel {
     private(set) var customSkip: CustomSkip?
     /// Shows the small "Kein Intro hinterlegt" card.
     private(set) var noIntroPromptVisible = false
+    /// New streak length while the "Streak verlängert" banner is shown, nil otherwise.
+    private(set) var streakCelebration: Int?
+    @ObservationIgnored private var celebrationTask: Task<Void, Never>?
 
     // Custom-UI state
     var isBuffering = false
@@ -110,6 +114,10 @@ final class PlayerViewModel {
     @ObservationIgnored private var nowPlaying: NowPlayingController?
     @ObservationIgnored private var scrubWasPlaying = false
     @ObservationIgnored private var lastScrubSeek = Date.distantPast
+    /// Position at the previous tick; `isAdvancing` is true while playback time really moves forward.
+    /// AVPlayer can leave `isPlaybackBufferEmpty` stuck at true after seeking although video plays.
+    @ObservationIgnored private var lastTickSeconds = Double.nan
+    @ObservationIgnored private var isAdvancing = false
     @ObservationIgnored private let initialSession: PlaybackSession
 
     init(session: PlaybackSession) {
@@ -135,7 +143,11 @@ final class PlayerViewModel {
         self.coordinator = coordinator
         self.downloads = downloads
         self.stats = stats
-        if let stats { recorder = WatchSessionRecorder(store: stats) }
+        if let stats {
+            let recorder = WatchSessionRecorder(store: stats)
+            recorder.onStreakExtended = { [weak self] days in self?.celebrateStreak(days) }
+            self.recorder = recorder
+        }
 
         player.defaultRate = playbackRate
         pip.onActiveChange = { [weak self] active in self?.pipActiveChanged(active) }
@@ -174,6 +186,7 @@ final class PlayerViewModel {
         loadTask?.cancel()
         countdownTask?.cancel()
         skipTimesTask?.cancel()
+        celebrationTask?.cancel()
         removeItemObservers()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
@@ -343,6 +356,7 @@ final class PlayerViewModel {
 
         isBuffering = false
         bufferedPosition = 0
+        resetProgressTracking()
         bufferEmptyObservation = item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.updateBuffering() }
         }
@@ -465,7 +479,9 @@ final class PlayerViewModel {
         let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
         let emptyWhilePlaying = (player.currentItem?.isPlaybackBufferEmpty ?? false)
             && !isPaused
-        let value = (waiting || emptyWhilePlaying) && state == .playing
+        // Time that really moves forward wins over stale buffer/status flags.
+        let progressing = isAdvancing && player.rate > 0
+        let value = (waiting || emptyWhilePlaying) && !progressing && state == .playing
         if isBuffering != value { isBuffering = value }
     }
 
@@ -490,6 +506,13 @@ final class PlayerViewModel {
         if s.isFinite, !isScrubbing { position = s }
         if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d; recomputeSkipTimes() }
         if s.isFinite { updateBufferedPosition(at: s) }
+        if s.isFinite, lastTickSeconds.isFinite {
+            let delta = s - lastTickSeconds
+            isAdvancing = delta > 0.05 && delta < 3
+        } else {
+            isAdvancing = false
+        }
+        lastTickSeconds = s
         updateBuffering()
 
         let currentPos = s.isFinite ? s : position
@@ -845,13 +868,41 @@ final class PlayerViewModel {
     func seek(to seconds: Double, completion: (@MainActor () -> Void)? = nil) {
         let target = clamped(seconds)
         position = target
+        resetProgressTracking()
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in
+                self?.updateBuffering()
                 self?.updateNowPlaying()
                 completion?()
             }
         }
+    }
+
+    // MARK: Streak
+
+    /// Shows the banner for a few seconds (Duolingo-style) with a success haptic.
+    private func celebrateStreak(_ days: Int) {
+        guard !isShutdown else { return }
+        streakCelebration = days
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        celebrationTask?.cancel()
+        celebrationTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            guard !Task.isCancelled else { return }
+            self?.streakCelebration = nil
+        }
+    }
+
+    func dismissStreakCelebration() {
+        celebrationTask?.cancel()
+        streakCelebration = nil
+    }
+
+    /// A seek makes the next tick jump, so progress is unknown until two ticks after it.
+    private func resetProgressTracking() {
+        lastTickSeconds = .nan
+        isAdvancing = false
     }
 
     // MARK: Playback control
@@ -913,6 +964,7 @@ final class PlayerViewModel {
         position = target
         let resume = scrubWasPlaying
         scrubWasPlaying = false
+        resetProgressTracking()
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in

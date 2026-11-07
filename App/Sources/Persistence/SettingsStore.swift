@@ -57,6 +57,14 @@ final class SettingsStore {
     var notifyAppUpdates: Bool = true {
         didSet { defaults.set(notifyAppUpdates, forKey: Keys.notifyAppUpdates) }
     }
+    /// Tägliche Erinnerung, solange heute noch keine ganze Folge geschaut wurde.
+    var streakReminders: Bool = false {
+        didSet { defaults.set(streakReminders, forKey: Keys.streakReminders) }
+    }
+    /// Uhrzeit der Streak-Erinnerung in Minuten ab Mitternacht.
+    var streakReminderMinutes: Int = 19 * 60 {
+        didSet { defaults.set(streakReminderMinutes, forKey: Keys.streakReminderMinutes) }
+    }
     /// Komprimierung heruntergeladener MP4-Folgen (Neukodierung auf dem Gerät).
     var compressDownloads: Bool = true {
         didSet { defaults.set(compressDownloads, forKey: Keys.compressDownloads) }
@@ -96,6 +104,8 @@ final class SettingsStore {
         static let verifyStreams = "settings.verifyStreams"
         static let notifyNewEpisodes = "settings.notifyNewEpisodes"
         static let notifyAppUpdates = "settings.notifyAppUpdates"
+        static let streakReminders = "settings.streakReminders"
+        static let streakReminderMinutes = "settings.streakReminderMinutes"
         static let compressDownloads = "settings.compressDownloads"
         static let downloadQuality = "settings.downloadQuality"
         static let autoDeleteWatchedDownloads = "settings.autoDeleteWatchedDownloads"
@@ -140,6 +150,12 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.notifyAppUpdates) != nil {
             notifyAppUpdates = defaults.bool(forKey: Keys.notifyAppUpdates)
+        }
+        if defaults.object(forKey: Keys.streakReminders) != nil {
+            streakReminders = defaults.bool(forKey: Keys.streakReminders)
+        }
+        if defaults.object(forKey: Keys.streakReminderMinutes) != nil {
+            streakReminderMinutes = min(max(defaults.integer(forKey: Keys.streakReminderMinutes), 0), 24 * 60 - 1)
         }
         if defaults.object(forKey: Keys.compressDownloads) != nil {
             compressDownloads = defaults.bool(forKey: Keys.compressDownloads)
