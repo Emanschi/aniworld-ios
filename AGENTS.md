@@ -14,6 +14,9 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 - Commits nur **lokal**. Vor jedem `git push` (egal welcher Branch) dem User Bescheid sagen und
   **auf seine ausdrückliche Bestätigung warten**. Eine frühere Freigabe gilt nicht für spätere Pushes.
 - Keine Force-Pushes, kein Löschen von Remote-Branches oder Tags, keine Release-Tags (`v*`) ohne Freigabe.
+- Commits und Tags nur mit der GitHub-noreply-Adresse der jeweiligen Person, nie mit einer privaten
+  E-Mail (`git config user.email` vor dem ersten Commit prüfen): Emanschi
+  `176057845+Emanschi@users.noreply.github.com`, Axsel1 `274859569+Axsel1-eins@users.noreply.github.com`.
 - `main` wird nur per Merge von `dev` aktualisiert, nachdem der User zugestimmt hat.
 
 ## CI / Pipeline
@@ -21,8 +24,9 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 - **Die Pipeline (`.github/workflows/**`, `scripts/build-ipa.sh`, `scripts/update-altstore-source.py`)
   darf ohne vorherige Rückfrage beim User nicht geändert werden.** Das gilt auch für scheinbar kleine
   Änderungen (Trigger, Runner, Action-Versionen, Caching). Erst fragen, dann ändern.
-- Gebaut wird nur auf `main` (Push), bei Tags `v*` und per manuellem Start. `dev` und Pull Requests
-  haben bewusst keine Pipeline, um GitHub-Actions-Minuten zu sparen (privates Repo, macOS = 10x).
+- Gebaut wird nur auf `main` (Push), bei Tags `v*` und per manuellem Start. `dev`, Feature-Branches
+  und Pull Requests haben bewusst keine Pipeline, um GitHub-Actions-Minuten zu sparen (privates Repo,
+  macOS = 10x).
 - Keine neuen Workflows anlegen und keine CI-Läufe auf anderen Branches aktivieren.
 
 ## Lizenzen & Pflichtangaben (immer!)
@@ -65,6 +69,6 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 
 - Größere Aufgaben werden geplant und auf Sonnet-Subagents verteilt, die bei Bedarf Haiku-Agents für
   mechanische Hilfsarbeiten nutzen. Parallel arbeitende Agents bekommen eigene Worktrees und nur
-  getrennte Dateien.
+  getrennte Dateien; ihre Ergebnisse landen im Feature-Branch der Aufgabe, nicht direkt auf `dev`.
 - `AniworldKit` lokal mit `swift build` / `swift test` prüfen. Die App selbst kompiliert nur in der
   CI auf `main`, also UI-Code mit gut bekannten iOS-17-APIs schreiben.
