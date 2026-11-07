@@ -7,7 +7,9 @@
       "Neu: Streak-Erinnerung in den Einstellungen. Zur gewählten Uhrzeit kommt eine Mitteilung, wenn du heute noch keine ganze Folge geschaut hast, und um 22:30 eine letzte Warnung, bevor dein Streak endet.",
       "Eine ganz geschaute Folge zählt jetzt sofort für den Streak, nicht erst beim Schließen des Players.",
       "Behoben: Nach dem Vor- und Zurückspulen blieb manchmal die Ladeanimation stehen, obwohl das Video schon wieder lief.",
-      "Das Optionen-Menü (drei Punkte) im Player ist jetzt immer da, auch bei Downloads – so kannst du Intro und Outro jederzeit festlegen."
+      "Das Optionen-Menü (drei Punkte) im Player ist jetzt immer da, auch bei Downloads – so kannst du Intro und Outro jederzeit festlegen.",
+      "Neu: Auf den Fernseher streamen. Über das TV-Symbol im Player spielst du Folgen auf Chromecast und Google TV ab, auch als MP4 heruntergeladene; Apple TV geht weiter über AirPlay.",
+      "Fire TV: Mit einer Empfänger-App wie „AirScreen“ erscheint dein Fire TV als Cast- oder AirPlay-Gerät."
     ]
   },
   {

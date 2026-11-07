@@ -40,6 +40,7 @@ struct PlayerTopBar: View {
 
     private var tools: some View {
         HStack(spacing: 10) {
+            CastButton(vm: vm)
             AirPlayButton()
                 .frame(width: 28, height: 28)
                 .frame(width: 40, height: 40)

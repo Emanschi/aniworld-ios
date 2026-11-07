@@ -67,6 +67,10 @@ final class PlayerViewModel {
 
     let player = AVPlayer()
     let pip = PictureInPictureController()
+    /// Chromecast session; while active the local player stays paused and controls go to the TV.
+    let cast = CastController()
+    @ObservationIgnored private var currentStream: ResolvedStream?
+    @ObservationIgnored private var castStatusCount = 0
 
     // Internals
     @ObservationIgnored private var service: AniworldService?
@@ -149,8 +153,12 @@ final class PlayerViewModel {
             self.recorder = recorder
         }
 
+        cast.onStatus = { [weak self] status in self?.castStatusChanged(status) }
+        cast.onFinished = { [weak self] in self?.castDidFinish() }
+        cast.onEnded = { [weak self] last in self?.castDidEnd(at: last) }
+
         player.defaultRate = playbackRate
-        pip.onActiveChange = { [weak self] active in self?.pipActiveChanged(active) }
+        pip.onActiveChange ={ [weak self] active in self?.pipActiveChanged(active) }
         pip.onRestoreRequested = { [weak self] in self?.coordinator?.isMinimized = false }
         nowPlaying = NowPlayingController(handlers: .init(
             play: { [weak self] in self?.play() },
@@ -187,6 +195,7 @@ final class PlayerViewModel {
         countdownTask?.cancel()
         skipTimesTask?.cancel()
         celebrationTask?.cancel()
+        cast.shutdown()
         removeItemObservers()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
@@ -348,6 +357,8 @@ final class PlayerViewModel {
 
         readyHandled = false
         pendingStart = start
+        currentStream = stream
+        if cast.isActive { sendCurrentStreamToCast(start: start) }
         currentHoster = stream.hoster
         currentLanguage = language
         position = start
@@ -424,7 +435,8 @@ final class PlayerViewModel {
                 self.state = .playing
                 self.readyForSaving = true
                 self.evaluateIntroPrompt()
-                self.play()
+                // While casting the episode plays on the TV; the local item only stays ready.
+                if !self.cast.isActive { self.play() }
                 self.updateNowPlaying()
                 Task { await self.prepareNext() }
             }
@@ -466,7 +478,7 @@ final class PlayerViewModel {
     private func timeControlChanged(status: AVPlayer.TimeControlStatus) {
         guard !isShutdown else { return }
         let paused = status == .paused
-        if !isScrubbing {
+        if !isScrubbing && !cast.isActive {
             isPaused = paused
             if paused { saveProgress() }
         }
@@ -481,7 +493,7 @@ final class PlayerViewModel {
             && !isPaused
         // Time that really moves forward wins over stale buffer/status flags.
         let progressing = isAdvancing && player.rate > 0
-        let value = (waiting || emptyWhilePlaying) && !progressing && state == .playing
+        let value = (waiting || emptyWhilePlaying) && !progressing && state == .playing && !cast.isActive
         if isBuffering != value { isBuffering = value }
     }
 
@@ -573,6 +585,7 @@ final class PlayerViewModel {
     // MARK: Progress
 
     private func currentSeconds() -> Double {
+        if cast.isActive { return cast.position }
         let s = player.currentTime().seconds
         return s.isFinite ? max(s, 0) : position
     }
@@ -868,6 +881,11 @@ final class PlayerViewModel {
     func seek(to seconds: Double, completion: (@MainActor () -> Void)? = nil) {
         let target = clamped(seconds)
         position = target
+        if cast.isActive {
+            cast.seek(to: target)
+            completion?()
+            return
+        }
         resetProgressTracking()
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
@@ -909,16 +927,89 @@ final class PlayerViewModel {
 
     func play() {
         guard !isShutdown else { return }
+        if cast.isActive {
+            cast.play()
+            isPaused = false
+            return
+        }
         player.defaultRate = playbackRate
         player.play()
     }
 
     func pause() {
+        if cast.isActive {
+            cast.pause()
+            isPaused = true
+            return
+        }
         player.pause()
     }
 
     func togglePlayPause() {
+        if cast.isActive {
+            if cast.isPaused { play() } else { pause() }
+            return
+        }
         if player.timeControlStatus == .paused { play() } else { pause() }
+    }
+
+    // MARK: Casting
+
+    func startCasting(to device: CastDiscovery.Device) {
+        guard let stream = currentStream, !isShutdown else { return }
+        let start = currentSeconds()
+        player.pause()
+        if pip.isActive { pip.stop() }
+        castStatusCount = 0
+        cast.begin(device: device, stream: stream, title: series.title, subtitle: castSubtitle,
+                   imageURL: series.coverURL, startTime: start)
+        isPaused = false
+    }
+
+    func stopCasting() {
+        cast.stop()
+    }
+
+    private var castSubtitle: String {
+        episode.title.isEmpty ? episode.code : "\(episode.code) · \(episode.title)"
+    }
+
+    private func sendCurrentStreamToCast(start: Double) {
+        guard let stream = currentStream else { return }
+        castStatusCount = 0
+        cast.load(stream: stream, title: series.title, subtitle: castSubtitle, imageURL: series.coverURL,
+                  startTime: start)
+    }
+
+    /// Receiver status (about once per second): drives the scrubber, stats and progress.
+    private func castStatusChanged(_ status: CastClient.MediaStatus) {
+        guard !isShutdown else { return }
+        if !isScrubbing { position = cast.position }
+        if duration <= 0, let d = cast.duration { duration = d }
+        isPaused = cast.isPaused
+        recorder?.tick(position: cast.position, duration: duration,
+                       isPlaying: status.playerState == "PLAYING", rate: 1)
+        castStatusCount += 1
+        if castStatusCount % 10 == 0 { saveProgress() }
+    }
+
+    private func castDidFinish() {
+        guard !isShutdown else { return }
+        if duration > 0 { position = duration }
+        saveProgress(atEnd: true)
+        recorder?.markEnded()
+        if settings?.autoplayNext == true && nextInfo != nil {
+            playNext()
+        }
+    }
+
+    /// Casting stopped: continue locally (paused) where the TV was.
+    private func castDidEnd(at last: Double) {
+        guard !isShutdown else { return }
+        saveProgress()
+        isPaused = true
+        if last > 0 { seek(to: last) }
+        updateNowPlaying()
     }
 
     func setPlaybackRate(_ rate: Float) {
@@ -964,6 +1055,11 @@ final class PlayerViewModel {
         position = target
         let resume = scrubWasPlaying
         scrubWasPlaying = false
+        if cast.isActive {
+            isScrubbing = false
+            cast.seek(to: target)
+            return
+        }
         resetProgressTracking()
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
