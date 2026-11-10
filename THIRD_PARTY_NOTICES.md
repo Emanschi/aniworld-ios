@@ -14,6 +14,7 @@ Es wird OHNE JEDE GEWÄHRLEISTUNG bereitgestellt. Vollständiger Text: [LICENSE]
 |---|---|---|---|---|
 | [aniworld-cli](https://github.com/dxmoc/aniworld-cli) | Vorlage für Suche, Seiten-Parser, VOE/Vidmoly-Extraktoren, Resolver; Test-Fixtures in `Tests/AniworldKitTests/Fixtures` | © dxmoc | GPL-3.0-or-later | `App/Resources/Licenses/GPL-3.0.txt` |
 | [SwiftSoup](https://github.com/scinfu/SwiftSoup) 2.14.x | HTML-Parser (Swift Package) | © 2009–2025 Jonathan Hedley (jsoup), © 2016–2025 Nabil Chatbi | MIT | `App/Resources/Licenses/SwiftSoup-MIT.txt` |
+| Google Cast Web Receiver SDK (CAF) | Wird von einem Fernseher zur Laufzeit aus `receiver/index.html` von Google geladen (`gstatic.com`), nicht Teil der App oder dieses Repos | © Google LLC | Google Cast SDK Additional Developer Terms | – (nicht mitgeliefert) |
 
 In der App sind diese Hinweise unter **Einstellungen → Info → Lizenzen & rechtliche Hinweise**
 einsehbar (`App/Sources/Features/Settings/LicensesView.swift`).

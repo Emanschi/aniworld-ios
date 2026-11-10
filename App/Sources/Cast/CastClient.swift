@@ -113,7 +113,8 @@ private struct CastMessage {
 
 // MARK: - Client
 
-/// Minimal Google Cast (CASTV2) sender that drives the Default Media Receiver.
+/// Minimal Google Cast (CASTV2) sender. Launches the configured custom receiver app (see
+/// `receiver/` in the repo) and falls back to the Default Media Receiver if that is not available.
 /// All callbacks and state changes happen on the main actor.
 @MainActor
 final class CastClient {
@@ -136,12 +137,20 @@ final class CastClient {
     private(set) var state: State = .idle
     var onStateChange: ((State) -> Void)?
     var onMediaStatus: ((MediaStatus) -> Void)?
+    /// Short user-facing notice (e.g. the fallback to the standard receiver).
+    var onNotice: ((String) -> Void)?
+    /// TV volume (0...1) and mute state from RECEIVER_STATUS.
+    var onVolume: ((Double, Bool) -> Void)?
+    /// Called when the running receiver app (un)registers the app's control namespace.
+    var onControlChannel: ((Bool) -> Void)?
     let device: CastDiscovery.Device
 
     // Protocol constants
     private static let senderID = "sender-0"
     private static let receiverID = "receiver-0"
-    private static let defaultMediaReceiverAppID = "CC1AD845"
+    static let defaultMediaReceiverAppID = "CC1AD845"
+    /// Custom namespace of our own web receiver (skip / next-up / toast messages).
+    static let controlNS = "urn:x-cast:com.aniworldios.control"
     private static let connectionNS = "urn:x-cast:com.google.cast.tp.connection"
     private static let heartbeatNS = "urn:x-cast:com.google.cast.tp.heartbeat"
     private static let receiverNS = "urn:x-cast:com.google.cast.receiver"
@@ -172,10 +181,19 @@ final class CastClient {
     private var mediaSessionID: Int?
     private var lastDuration: Double?
     private var pendingLoad: PendingLoad?
+    /// App id that is (or is about to be) launched on the receiver.
+    private var launchedAppID: String
+    private var supportsControlChannel = false
 
-    init(device: CastDiscovery.Device) {
+    /// - Parameter appID: custom receiver app id; empty means the Default Media Receiver.
+    init(device: CastDiscovery.Device, appID: String) {
         self.device = device
+        let trimmed = appID.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        self.launchedAppID = trimmed.isEmpty ? CastClient.defaultMediaReceiverAppID : trimmed
     }
+
+    /// True while our own web receiver (with the control namespace) is running.
+    var hasControlChannel: Bool { supportsControlChannel }
 
     // MARK: Public API
 
@@ -257,6 +275,26 @@ final class CastClient {
         sendMediaCommand("SEEK", extra: ["currentTime": max(0, seconds)])
     }
 
+    /// Sets the TV volume (0...1).
+    func setVolume(_ level: Double) {
+        guard state == .connected else { return }
+        send(
+            namespace: Self.receiverNS,
+            destination: Self.receiverID,
+            payload: [
+                "type": "SET_VOLUME",
+                "volume": ["level": min(max(level, 0), 1)],
+                "requestId": nextRequestID()
+            ]
+        )
+    }
+
+    /// Sends a message to the custom web receiver; ignored with the standard receiver.
+    func sendControl(_ payload: [String: Any]) {
+        guard state == .connected, supportsControlChannel, let transportID else { return }
+        send(namespace: Self.controlNS, destination: transportID, payload: payload)
+    }
+
     /// Stops the media and closes the receiver app.
     func stop() {
         pendingLoad = nil
@@ -302,16 +340,7 @@ final class CastClient {
             setState(.connected)
             startTimer()
             if let conn = connection { receiveLoop(conn) }
-            // Launch (or re-attach to) the Default Media Receiver.
-            send(
-                namespace: Self.receiverNS,
-                destination: Self.receiverID,
-                payload: [
-                    "type": "LAUNCH",
-                    "appId": Self.defaultMediaReceiverAppID,
-                    "requestId": nextRequestID()
-                ]
-            )
+            launchReceiverApp()
         case .waiting:
             break // retried by Network.framework; the timeout in connect() ends it
         case .failed(let error):
@@ -321,6 +350,19 @@ final class CastClient {
         @unknown default:
             break
         }
+    }
+
+    /// Launches (or re-attaches to) the receiver app `launchedAppID`.
+    private func launchReceiverApp() {
+        send(
+            namespace: Self.receiverNS,
+            destination: Self.receiverID,
+            payload: [
+                "type": "LAUNCH",
+                "appId": launchedAppID,
+                "requestId": nextRequestID()
+            ]
+        )
     }
 
     private func receiveLoop(_ conn: NWConnection) {
@@ -380,6 +422,13 @@ final class CastClient {
         mediaSessionID = nil
         lastDuration = nil
         pendingLoad = nil
+        setControlChannel(false)
+    }
+
+    private func setControlChannel(_ available: Bool) {
+        guard supportsControlChannel != available else { return }
+        supportsControlChannel = available
+        onControlChannel?(available)
     }
 
     private func setState(_ newState: State) {
@@ -453,7 +502,11 @@ final class CastClient {
         case "RECEIVER_STATUS":
             let status = json["status"] as? [String: Any]
             let apps = status?["applications"] as? [[String: Any]] ?? []
-            let app = apps.first { ($0["appId"] as? String) == Self.defaultMediaReceiverAppID }
+            if let volume = status?["volume"] as? [String: Any],
+               let level = (volume["level"] as? NSNumber)?.doubleValue {
+                onVolume?(min(max(level, 0), 1), (volume["muted"] as? Bool) ?? false)
+            }
+            let app = apps.first { ($0["appId"] as? String)?.uppercased() == launchedAppID }
             guard let app,
                   let transport = app["transportId"] as? String,
                   let session = app["sessionId"] as? String else {
@@ -462,6 +515,7 @@ final class CastClient {
                     transportID = nil
                     sessionID = nil
                     mediaSessionID = nil
+                    setControlChannel(false)
                     onMediaStatus?(MediaStatus(
                         playerState: "IDLE",
                         currentTime: 0,
@@ -471,6 +525,8 @@ final class CastClient {
                 }
                 return
             }
+            let namespaces = (app["namespaces"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+            setControlChannel(namespaces.contains(Self.controlNS))
             sessionID = session
             if transportID != transport {
                 transportID = transport
@@ -482,7 +538,14 @@ final class CastClient {
                 }
             }
         case "LAUNCH_ERROR":
-            fail("Cast-App konnte nicht gestartet werden")
+            if launchedAppID != Self.defaultMediaReceiverAppID {
+                // Custom receiver unknown, not published or not allowed on this device.
+                launchedAppID = Self.defaultMediaReceiverAppID
+                onNotice?("Eigener Empfänger nicht verfügbar – der Standard-Player von Google wird verwendet.")
+                launchReceiverApp()
+            } else {
+                fail("Cast-App konnte nicht gestartet werden")
+            }
         default:
             break
         }

@@ -71,6 +71,7 @@ final class PlayerViewModel {
     let cast = CastController()
     @ObservationIgnored private var currentStream: ResolvedStream?
     @ObservationIgnored private var castStatusCount = 0
+    @ObservationIgnored private var nextUpAnnouncedFor: String?
 
     // Internals
     @ObservationIgnored private var service: AniworldService?
@@ -170,7 +171,7 @@ final class PlayerViewModel {
 
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            MainActor.assumeIsolated { self?.tick(time) }
+            MainActor.assumeIsolated { self?.tick(time, fromCast: false) }
         }
         timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             let status = player.timeControlStatus
@@ -512,12 +513,15 @@ final class PlayerViewModel {
         if end != bufferedPosition { bufferedPosition = end }
     }
 
-    private func tick(_ time: CMTime) {
-        guard readyForSaving, !isShutdown else { return }
-        let s = time.seconds
+    /// Progress tick. While casting it is driven by the receiver status (`fromCast`), otherwise by
+    /// the local player's time observer; the other source is ignored.
+    private func tick(_ time: CMTime, fromCast: Bool) {
+        guard readyForSaving, !isShutdown, cast.isActive == fromCast else { return }
+        let s = fromCast ? cast.position : time.seconds
         if s.isFinite, !isScrubbing { position = s }
         if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, d != duration { duration = d; recomputeSkipTimes() }
-        if s.isFinite { updateBufferedPosition(at: s) }
+        if fromCast, duration <= 0, let d = cast.duration { duration = d; recomputeSkipTimes() }
+        if s.isFinite, !fromCast { updateBufferedPosition(at: s) }
         if s.isFinite, lastTickSeconds.isFinite {
             let delta = s - lastTickSeconds
             isAdvancing = delta > 0.05 && delta < 3
@@ -528,9 +532,15 @@ final class PlayerViewModel {
         updateBuffering()
 
         let currentPos = s.isFinite ? s : position
-        recorder?.tick(position: currentPos, duration: duration,
-                       isPlaying: player.timeControlStatus == .playing && player.rate > 0,
-                       rate: Double(player.rate))
+        if fromCast {
+            recorder?.tick(position: currentPos, duration: duration,
+                           isPlaying: !cast.isPaused && !cast.isBuffering, rate: 1)
+            announceNextUpIfNeeded(position: currentPos)
+        } else {
+            recorder?.tick(position: currentPos, duration: duration,
+                           isPlaying: player.timeControlStatus == .playing && player.rate > 0,
+                           rate: Double(player.rate))
+        }
         if skipStateEpisodeID != episode.id {
             skipStateEpisodeID = episode.id
             skippedSegmentIds = []
@@ -560,6 +570,7 @@ final class PlayerViewModel {
                 skippedSegmentIds.insert(active.skipId)
                 activeSkipSegment = nil
                 recorder?.noteSkipped(seconds: skippedAmount(to: active.interval.endTime, from: currentPos))
+                notifyCastSkip(to: active.interval.endTime, ending: active.skipType.isEnding)
                 if wantsNextOnOutro {
                     if countdown == nil { startCountdown() }
                 } else {
@@ -576,9 +587,12 @@ final class PlayerViewModel {
     private func updateNowPlaying() {
         guard !isShutdown, let nowPlaying else { return }
         let subtitle = episode.title.isEmpty ? episode.code : "\(episode.code) – \(episode.title)"
-        let playing = player.timeControlStatus != .paused
+        // While casting, the lock screen / Control Center / AirPods follow the TV, not the paused local player.
+        let casting = cast.isActive
+        let playing = casting ? (!cast.isPaused && cast.phase == .active) : player.timeControlStatus != .paused
         nowPlaying.update(title: series.title, subtitle: subtitle, duration: duration,
-                          elapsed: position, rate: playbackRate, isPlaying: playing,
+                          elapsed: casting ? cast.position : position, rate: casting ? 1 : playbackRate,
+                          isPlaying: playing,
                           hasNext: hasNext, coverURL: series.coverURL)
     }
 
@@ -818,7 +832,10 @@ final class PlayerViewModel {
             skippedSegmentIds.insert(id)
             autoSkippedIds.insert(id)
             let target = activeSkipSegment?.skipId == id ? activeSkipSegment?.interval.endTime : nil
-            if let target { recorder?.noteSkipped(seconds: skippedAmount(to: target, from: currentSeconds())) }
+            if let target {
+                recorder?.noteSkipped(seconds: skippedAmount(to: target, from: currentSeconds()))
+                notifyCastSkip(to: target, ending: pill.isEnding)
+            }
             activeSkipSegment = nil
             if pill.isEnding && settings?.autoplayNext == true && hasNext {
                 // Outro skip goes straight to the next episode (countdown card).
@@ -834,13 +851,32 @@ final class PlayerViewModel {
         } else {
             fixedIntroSkipUsed = true
             recorder?.noteSkipped(seconds: Double(introSkipSeconds))
+            notifyCastSkip(to: currentSeconds() + Double(introSkipSeconds), ending: false)
             seek(to: currentSeconds() + Double(introSkipSeconds)) { [weak self] in self?.skipInFlight = false }
         }
     }
 
     func skipIntro() {
         recorder?.noteSkipped(seconds: Double(introSkipSeconds))
+        notifyCastSkip(to: currentSeconds() + Double(introSkipSeconds), ending: false)
         seek(to: currentSeconds() + Double(introSkipSeconds))
+    }
+
+    /// Shows a short "skipped" hint on the TV (only our own web receiver understands it).
+    private func notifyCastSkip(to target: Double, ending: Bool) {
+        guard cast.isActive else { return }
+        cast.sendSkip(to: target, label: ending ? "Outro übersprungen" : "Intro übersprungen")
+    }
+
+    /// A few seconds before the end: tells the TV which episode comes next.
+    private func announceNextUpIfNeeded(position pos: Double) {
+        guard hasNext, settings?.autoplayNext == true, duration > 0, nextUpAnnouncedFor != episode.id,
+              case let (next, _)? = nextInfo else { return }
+        let remaining = duration - pos
+        guard remaining > 0, remaining <= 12 else { return }
+        nextUpAnnouncedFor = episode.id
+        let title = next.title.isEmpty ? next.code : "\(next.code) · \(next.title)"
+        cast.sendNextUp(title: title, seconds: max(Int(remaining.rounded()), 1))
     }
 
     private func skippedAmount(to target: Double, from current: Double) -> Double {
@@ -930,6 +966,7 @@ final class PlayerViewModel {
         if cast.isActive {
             cast.play()
             isPaused = false
+            updateNowPlaying()
             return
         }
         player.defaultRate = playbackRate
@@ -940,6 +977,7 @@ final class PlayerViewModel {
         if cast.isActive {
             cast.pause()
             isPaused = true
+            updateNowPlaying()
             return
         }
         player.pause()
@@ -962,7 +1000,8 @@ final class PlayerViewModel {
         if pip.isActive { pip.stop() }
         castStatusCount = 0
         cast.begin(device: device, stream: stream, title: series.title, subtitle: castSubtitle,
-                   imageURL: series.coverURL, startTime: start)
+                   imageURL: series.coverURL, startTime: start,
+                   receiverAppID: settings?.castReceiverAppID ?? "")
         isPaused = false
     }
 
@@ -987,10 +1026,10 @@ final class PlayerViewModel {
         if !isScrubbing { position = cast.position }
         if duration <= 0, let d = cast.duration { duration = d }
         isPaused = cast.isPaused
-        recorder?.tick(position: cast.position, duration: duration,
-                       isPlaying: status.playerState == "PLAYING", rate: 1)
+        // Skip pill, recorder, progress saving and next-up hint run through the shared tick.
+        tick(.zero, fromCast: true)
         castStatusCount += 1
-        if castStatusCount % 10 == 0 { saveProgress() }
+        if castStatusCount % 2 == 0 { updateNowPlaying() }
     }
 
     private func castDidFinish() {

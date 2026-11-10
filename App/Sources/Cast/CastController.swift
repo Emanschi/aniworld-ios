@@ -24,6 +24,17 @@ final class CastController {
     private(set) var duration: Double?
     private(set) var isPaused = false
     private(set) var isBuffering = false
+    /// TV volume 0...1 (last RECEIVER_STATUS or what the user set).
+    private(set) var volume: Double = 0
+    /// True once the receiver reported its volume.
+    private(set) var hasVolume = false
+    /// Our own web receiver is running (skip / next-up / toast messages reach the TV).
+    private(set) var usesCustomReceiver = false
+    /// Short hint for the user, e.g. the fallback to the standard receiver. Cleared by the UI.
+    private(set) var notice: String?
+    /// Last time the app itself changed the volume; hardware-button echoes are ignored shortly after.
+    @ObservationIgnored private(set) var lastVolumeSetAt = Date.distantPast
+    @ObservationIgnored private var lastVolumeSent = Date.distantPast
 
     /// Called with the receiver's media status (already reflected in the properties above).
     @ObservationIgnored var onStatus: ((CastClient.MediaStatus) -> Void)?
@@ -35,6 +46,7 @@ final class CastController {
     @ObservationIgnored private var client: CastClient?
     @ObservationIgnored private let keepAlive = SilentAudioKeepAlive()
     @ObservationIgnored private var mediaLoaded = false
+    @ObservationIgnored private var pendingVolumeTask: Task<Void, Never>?
 
     /// True from choosing a device until casting ends.
     var isActive: Bool {
@@ -50,7 +62,7 @@ final class CastController {
 
     /// Connects to `device` and plays `stream` there from `startTime`.
     func begin(device: CastDiscovery.Device, stream: ResolvedStream, title: String, subtitle: String?,
-               imageURL: URL?, startTime: Double) {
+               imageURL: URL?, startTime: Double, receiverAppID: String) {
         end(notify: false)
         self.device = device
         phase = .connecting
@@ -59,10 +71,16 @@ final class CastController {
         isPaused = false
         isBuffering = true
         mediaLoaded = false
+        hasVolume = false
+        usesCustomReceiver = false
+        notice = nil
 
-        let client = CastClient(device: device)
+        let client = CastClient(device: device, appID: receiverAppID)
         client.onStateChange = { [weak self] state in self?.clientStateChanged(state) }
         client.onMediaStatus = { [weak self] status in self?.mediaStatusChanged(status) }
+        client.onNotice = { [weak self] text in self?.notice = text }
+        client.onVolume = { [weak self] level, _ in self?.receiverVolumeChanged(level) }
+        client.onControlChannel = { [weak self] available in self?.usesCustomReceiver = available }
         self.client = client
         client.connect()
         keepAlive.start()
@@ -118,6 +136,63 @@ final class CastController {
         position = max(seconds, 0)
         isBuffering = true
         client?.seek(to: position)
+    }
+
+    // MARK: Volume & TV messages
+
+    /// Sets the TV volume. `mirrorToPhone` moves the iPhone's volume slider along, so the hardware
+    /// buttons continue from the same level.
+    func setVolume(_ level: Double, mirrorToPhone: Bool) {
+        let clamped = min(max(level, 0), 1)
+        volume = clamped
+        lastVolumeSetAt = Date()
+        if mirrorToPhone { VolumeController.shared.setVolume(Float(clamped)) }
+        // Sliders deliver many values: send at most about 10 per second, the last one always wins.
+        let now = Date()
+        if now.timeIntervalSince(lastVolumeSent) >= 0.1 {
+            lastVolumeSent = now
+            client?.setVolume(clamped)
+        } else {
+            pendingVolumeTask?.cancel()
+            pendingVolumeTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                if Task.isCancelled { return }
+                guard let self else { return }
+                self.lastVolumeSent = Date()
+                self.client?.setVolume(self.volume)
+            }
+        }
+    }
+
+    func clearNotice() {
+        notice = nil
+    }
+
+    /// Tells our web receiver that a segment was skipped (shows a short hint on the TV).
+    func sendSkip(to seconds: Double, label: String) {
+        client?.sendControl(["type": "skip", "to": seconds, "label": label])
+    }
+
+    /// Announces the next episode on the TV a few seconds before the end.
+    func sendNextUp(title: String, seconds: Int) {
+        client?.sendControl(["type": "nextUp", "title": title, "seconds": seconds])
+    }
+
+    func sendToast(_ text: String) {
+        client?.sendControl(["type": "toast", "text": text])
+    }
+
+    private func receiverVolumeChanged(_ level: Double) {
+        let first = !hasVolume
+        hasVolume = true
+        // Right after the user's own change the receiver may still report the old value.
+        if Date().timeIntervalSince(lastVolumeSetAt) > 1.0 { volume = level }
+        if first {
+            // Hardware buttons should start from the TV's level.
+            lastVolumeSetAt = Date()
+            volume = level
+            VolumeController.shared.setVolume(Float(level))
+        }
     }
 
     // MARK: Events
@@ -194,9 +269,16 @@ final class CastController {
     private func teardown() {
         client?.onStateChange = nil
         client?.onMediaStatus = nil
+        client?.onNotice = nil
+        client?.onVolume = nil
+        client?.onControlChannel = nil
         client?.disconnect()
         client = nil
         keepAlive.stop()
+        pendingVolumeTask?.cancel()
+        pendingVolumeTask = nil
+        usesCustomReceiver = false
+        hasVolume = false
         isBuffering = false
         mediaLoaded = false
     }

@@ -13,6 +13,7 @@ struct SettingsView: View {
             Form {
                 PrioritySection()
                 PlaybackSection()
+                CastSettingsSection()
                 DownloadsSettingsSection()
                 SyncSection()
                 NotificationsSection()
@@ -209,6 +210,26 @@ private struct PlaybackSection: View {
             Text("Wiedergabe")
         } footer: {
             Text("Blendet bei Intro und Outro einen Sprung-Button ein. Die Zeiten legst du selbst fest – im Player für eine Folge oder die ganze Staffel („Eigene Intro-Zeiten“); sie bleiben auf deinem Gerät bzw. in deinem iCloud-Sync. Ohne eigene Zeiten wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
+        }
+    }
+}
+
+// MARK: Fernseher
+
+private struct CastSettingsSection: View {
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            TextField("Eigene Empfänger-App-ID", text: $settings.castReceiverAppID)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.system(.body, design: .monospaced))
+        } header: {
+            Text("Fernseher (Chromecast)")
+        } footer: {
+            Text("Optional. Mit der App-ID deines eigenen Empfängers erscheint der Player auf dem Fernseher im AniWorld-Design. Ohne App-ID wird der Standard-Player von Google verwendet. Ist der eigene Empfänger nicht erreichbar, springt die App automatisch auf den Standard-Player zurück.")
         }
     }
 }
