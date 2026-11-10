@@ -66,6 +66,10 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        # Chromecast: Bonjour discovery and the stream proxy need local network access.
+        NSLocalNetworkUsageDescription: AniWorld sucht Chromecast- und Google-TV-Geräte in deinem WLAN und streamt Folgen dorthin.
+        NSBonjourServices:
+          - _googlecast._tcp
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLName: com.aniworldios.app

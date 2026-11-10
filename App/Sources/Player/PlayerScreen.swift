@@ -138,6 +138,10 @@ private struct PlayerContentView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             surface
+            if vm.cast.isActive {
+                CastActiveOverlay(cast: vm.cast)
+                    .ignoresSafeArea()
+            }
             if isPlaying {
                 PlayerGestureLayer(
                     onTap: handleTap,
@@ -185,8 +189,21 @@ private struct PlayerContentView: View {
             if let seconds = vm.countdown {
                 PlayerCountdownCard(vm: vm, seconds: seconds)
             }
+            if let days = vm.streakCelebration, !locked {
+                StreakCelebrationBanner(days: days) {
+                    withAnimation(.easeInOut(duration: 0.25)) { vm.dismissStreakCelebration() }
+                }
+                .zIndex(9)
+            }
+            if case .failed(let message) = vm.cast.phase {
+                CastErrorBanner(message: message) {
+                    withAnimation(.easeInOut(duration: 0.25)) { vm.cast.dismissError() }
+                }
+                .zIndex(9)
+            }
             panelLayer
         }
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: vm.streakCelebration)
         .environment(\.colorScheme, .dark)
         .task(id: HideKey(token: activityToken, shown: controlsShown, allowed: autoHideAllowed)) {
             guard controlsShown, autoHideAllowed else { return }

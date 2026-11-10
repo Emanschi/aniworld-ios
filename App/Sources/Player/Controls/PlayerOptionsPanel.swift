@@ -1,7 +1,7 @@
 import SwiftUI
 import AniworldKit
 
-/// Language and hoster selection.
+/// Language and hoster selection plus the intro/outro editor.
 struct PlayerOptionsPanel: View {
     let vm: PlayerViewModel
     let onClose: () -> Void
@@ -9,7 +9,7 @@ struct PlayerOptionsPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PlayerPanelHeader(title: "Sprache & Hoster", subtitle: nil, onClose: onClose)
+            PlayerPanelHeader(title: "Optionen", subtitle: nil, onClose: onClose)
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     if !vm.availableLanguages.isEmpty {
@@ -36,7 +36,15 @@ struct PlayerOptionsPanel: View {
                             }
                         }
                     }
-                    sectionTitle("Intro")
+                    if vm.availableLanguages.isEmpty && vm.availableHosters.isEmpty {
+                        sectionTitle("Sprache & Hoster")
+                        Text("Für diese Folge gibt es keine Auswahl, z. B. weil sie als Download offline läuft.")
+                            .font(.system(.footnote, design: .rounded))
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(.horizontal, 4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    sectionTitle("Intro & Outro")
                     Button {
                         onOpen(.introEditor)
                     } label: {
@@ -44,7 +52,7 @@ struct PlayerOptionsPanel: View {
                             Image(systemName: "scissors")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.accent)
-                            Text("Intro bearbeiten")
+                            Text("Intro & Outro bearbeiten")
                                 .font(.system(.body, design: .rounded).weight(.medium))
                                 .foregroundStyle(.white)
                             Spacer(minLength: 8)

@@ -38,12 +38,9 @@ struct PlayerTopBar: View {
         vm.episode.title.isEmpty ? vm.episode.code : "\(vm.episode.code) · \(vm.episode.title)"
     }
 
-    private var hasOptions: Bool {
-        !vm.availableLanguages.isEmpty || !vm.availableHosters.isEmpty
-    }
-
     private var tools: some View {
         HStack(spacing: 10) {
+            CastButton(vm: vm)
             AirPlayButton()
                 .frame(width: 28, height: 28)
                 .frame(width: 40, height: 40)
@@ -56,9 +53,8 @@ struct PlayerTopBar: View {
                     vm.pip.toggle()
                 }
             }
-            if hasOptions {
-                PlayerIconButton(systemName: "ellipsis", label: "Sprache und Hoster", action: onOptions)
-            }
+            // Always available: besides language/hoster it holds the intro/outro editor.
+            PlayerIconButton(systemName: "ellipsis", label: "Optionen", action: onOptions)
         }
     }
 }
