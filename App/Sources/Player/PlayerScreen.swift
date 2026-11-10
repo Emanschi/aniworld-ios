@@ -123,7 +123,7 @@ private struct PlayerContentView: View {
 
     /// Full controls are visible.
     private var showFull: Bool {
-        isPlaying && !locked && vm.countdown == nil && (controlsShown || vm.isPaused || vm.isScrubbing)
+        isPlaying && !locked && !vm.cast.isActive && vm.countdown == nil && (controlsShown || vm.isPaused || vm.isScrubbing)
     }
 
     private var showNextPill: Bool {
@@ -138,13 +138,16 @@ private struct PlayerContentView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             surface
-            if isPlaying {
+            if isPlaying && !vm.cast.isActive {
                 PlayerGestureLayer(
                     onTap: handleTap,
                     onDoubleTap: handleDoubleTap,
                     onVerticalSwipe: handleVerticalSwipe,
                     onSwipeEnd: handleSwipeEnd
                 )
+            }
+            if vm.cast.isActive {
+                CastRemoteView(vm: vm)
             }
             feedbackLayer
             if let hudState {
@@ -165,7 +168,7 @@ private struct PlayerContentView: View {
             }
             controlsLayer
             lockLayer
-            if isPlaying && !locked {
+            if isPlaying && !locked && !vm.cast.isActive {
                 PlayerPills(
                     skip: vm.skipPill,
                     showNext: showNextPill,
@@ -188,6 +191,12 @@ private struct PlayerContentView: View {
             if let days = vm.streakCelebration, !locked {
                 StreakCelebrationBanner(days: days) {
                     withAnimation(.easeInOut(duration: 0.25)) { vm.dismissStreakCelebration() }
+                }
+                .zIndex(9)
+            }
+            if case .failed(let message) = vm.cast.phase {
+                CastErrorBanner(message: message) {
+                    withAnimation(.easeInOut(duration: 0.25)) { vm.cast.dismissError() }
                 }
                 .zIndex(9)
             }
@@ -436,6 +445,13 @@ private struct PlayerContentView: View {
     /// Volume changed through the hardware buttons (or the system). Ignores changes caused by our
     /// own swipe, which arrive slightly delayed through the hidden volume slider.
     private func handleHardwareVolume(_ value: Double) {
+        if vm.cast.isActive {
+            // While casting, the iPhone's volume buttons control the TV. Echoes of our own slider
+            // changes (mirrored to the phone) are ignored.
+            guard vm.cast.hasVolume, Date().timeIntervalSince(vm.cast.lastVolumeSetAt) > 0.8 else { return }
+            vm.cast.setVolume(value, mirrorToPhone: false)
+            return
+        }
         guard !isActivelySwiping, !locked, Date().timeIntervalSince(lastSwipeAt) > 0.6 else { return }
         withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
             hudState = PlayerHUDState(kind: .volume, value: min(max(value, 0), 1))

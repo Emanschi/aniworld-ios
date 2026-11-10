@@ -29,6 +29,10 @@ final class SettingsStore {
     var introSkipSeconds: Int = 85 {
         didSet { defaults.set(introSkipSeconds, forKey: Keys.introSkipSeconds) }
     }
+    /// App id of the own Chromecast receiver (see `receiver/`); empty = Google's standard player.
+    var castReceiverAppID: String = "" {
+        didSet { defaults.set(castReceiverAppID, forKey: Keys.castReceiverAppID) }
+    }
     /// Automatic detection of intro/outro timestamps.
     var enableSkipDetection: Bool = true {
         didSet { defaults.set(enableSkipDetection, forKey: Keys.enableSkipDetection) }
@@ -97,6 +101,7 @@ final class SettingsStore {
         static let autoplayNext = "settings.autoplayNext"
         static let autoplayCountdown = "settings.autoplayCountdown"
         static let introSkipSeconds = "settings.introSkipSeconds"
+        static let castReceiverAppID = "settings.castReceiverAppID"
         static let enableSkipDetection = "settings.enableSkipDetection"
         static let autoSkipIntro = "settings.autoSkipIntro"
         static let autoSkipEnding = "settings.autoSkipEnding"
@@ -129,6 +134,9 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.introSkipSeconds) != nil {
             introSkipSeconds = max(defaults.integer(forKey: Keys.introSkipSeconds), 1)
+        }
+        if let appID = defaults.string(forKey: Keys.castReceiverAppID) {
+            castReceiverAppID = appID
         }
         if defaults.object(forKey: Keys.enableSkipDetection) != nil {
             enableSkipDetection = defaults.bool(forKey: Keys.enableSkipDetection)
