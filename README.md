@@ -128,10 +128,12 @@ iOS nur selten Hintergrundzeit, daher kommen Benachrichtigungen teils erst beim 
 
 ## Selbst bauen
 
-**Ohne Mac (GitHub Actions):** Ein Push auf `main` oder ein manueller Start über *Run workflow*
-baut eine unsignierte IPA (Artefakt `AniWorld-ipa`). Ein Tag `vX.Y.Z` erstellt zusätzlich ein
-Release mit IPA und AltStore-Quelle. Entwickelt wird auf Feature-Branches (`name/thema`), die per
-Pull Request nach `dev` gehen; `dev`, Feature-Branches und Pull Requests haben keine eigene Pipeline.
+**Ohne Mac (GitHub Actions):** Die IPA wird nur für Releases gebaut. Ein Tag `vX.Y.Z` auf `main`
+baut eine unsignierte IPA und erstellt das Release mit IPA, AltStore-Quelle und den Patchnotes der
+Version als Beschreibung. Ein manueller Start über *Run workflow* baut eine Test-IPA (Artefakt
+`AniWorld-ipa`) ohne Release. Entwickelt wird auf Feature-Branches (`name/thema`), die per Pull
+Request nach `dev` gehen; `dev`, `main`-Pushes, Feature-Branches und Pull Requests starten keine
+Pipeline. Der genaue Release-Ablauf steht in [AGENTS.md](AGENTS.md#release-nur-nach-freigabe-durch-den-user).
 
 **Auf dem Mac:** Xcode und [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
