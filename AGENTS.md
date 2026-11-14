@@ -21,13 +21,27 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 
 ## CI / Pipeline
 
-- **Die Pipeline (`.github/workflows/**`, `scripts/build-ipa.sh`, `scripts/update-altstore-source.py`)
-  darf ohne vorherige Rückfrage beim User nicht geändert werden.** Das gilt auch für scheinbar kleine
-  Änderungen (Trigger, Runner, Action-Versionen, Caching). Erst fragen, dann ändern.
-- Gebaut wird nur auf `main` (Push), bei Tags `v*` und per manuellem Start. `dev`, Feature-Branches
-  und Pull Requests haben bewusst keine Pipeline, um GitHub-Actions-Minuten zu sparen (privates Repo,
-  macOS = 10x).
+- **Die Pipeline (`.github/workflows/**`, `scripts/build-ipa.sh`, `scripts/update-altstore-source.py`,
+  `scripts/release-notes.py`) darf ohne vorherige Rückfrage beim User nicht geändert werden.** Das gilt
+  auch für scheinbar kleine Änderungen (Trigger, Runner, Action-Versionen, Caching). Erst fragen, dann
+  ändern.
+- Eine IPA wird **nur für Releases** gebaut: ein Tag `vX.Y.Z` auf einem Commit von `main`. Pushes auf
+  `main`, `dev`, Feature-Branches und Pull Requests starten nichts (GitHub-Actions-Minuten sparen,
+  privates Repo, macOS = 10x). Ein manueller Start (*Run workflow*) baut nur eine Test-IPA als Artefakt,
+  ohne Release; vorher den User fragen.
 - Keine neuen Workflows anlegen und keine CI-Läufe auf anderen Branches aktivieren.
+
+## Release (nur nach Freigabe durch den User)
+
+1. Alles für das Release ist per PR auf `dev`; der oberste Eintrag in `App/Resources/PatchNotes.json`
+   hat die neue Version.
+2. `MARKETING_VERSION` in `project.yml` auf die neue Version setzen (per PR nach `dev`).
+3. `dev` nach `main` mergen.
+4. Auf `main` den Tag `vX.Y.Z` setzen und pushen. Die Pipeline prüft, dass der Tag auf `main` liegt und
+   es Patchnotes für die Version gibt, baut die IPA und erstellt das GitHub-Release mit IPA,
+   AltStore-Quelle und den Patchnotes als Beschreibung.
+5. Schlägt der Build fehl, entsteht kein Release: Fehler per PR beheben und eine neue Patch-Version
+   taggen (Tags nicht löschen oder verschieben).
 
 ## Lizenzen & Pflichtangaben (immer!)
 
