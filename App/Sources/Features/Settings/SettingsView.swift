@@ -13,6 +13,7 @@ struct SettingsView: View {
             Form {
                 PrioritySection()
                 PlaybackSection()
+                CastSettingsSection()
                 DownloadsSettingsSection()
                 SyncSection()
                 NotificationsSection()
@@ -213,12 +214,49 @@ private struct PlaybackSection: View {
     }
 }
 
+// MARK: Fernseher
+
+private struct CastSettingsSection: View {
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            TextField("Eigene Empfänger-App-ID", text: $settings.castReceiverAppID)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.system(.body, design: .monospaced))
+        } header: {
+            Text("Fernseher (Chromecast)")
+        } footer: {
+            Text("Optional. Mit der App-ID deines eigenen Empfängers erscheint der Player auf dem Fernseher im AniWorld-Design. Ohne App-ID wird der Standard-Player von Google verwendet. Ist der eigene Empfänger nicht erreichbar, springt die App automatisch auf den Standard-Player zurück.")
+        }
+    }
+}
+
 // MARK: Notifications
 
 private struct NotificationsSection: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(EpisodeWatcher.self) private var watcher
+    @Environment(StreakReminderScheduler.self) private var streakReminders
     @Environment(\.openURL) private var openURL
+
+    /// Bindet die Minuten ab Mitternacht an einen DatePicker (nur Uhrzeit).
+    private var reminderTime: Binding<Date> {
+        Binding<Date>(
+            get: {
+                let minutes = settings.streakReminderMinutes
+                return Calendar.current.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0,
+                                             of: Date()) ?? Date()
+            },
+            set: { date in
+                let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+                settings.streakReminderMinutes = (comps.hour ?? 19) * 60 + (comps.minute ?? 0)
+                streakReminders.scheduleSoon()
+            }
+        )
+    }
 
     private var lastCheckText: String {
         guard let date = watcher.lastCheckAt else { return "Noch nie" }
@@ -251,7 +289,21 @@ private struct NotificationsSection: View {
             .tint(Theme.accent)
             Toggle("Neue App-Version", isOn: $settings.notifyAppUpdates)
                 .tint(Theme.accent)
-            if (settings.notifyNewEpisodes || settings.notifyAppUpdates) && isDenied {
+            Toggle("Streak-Erinnerung", isOn: Binding<Bool>(
+                get: { settings.streakReminders },
+                set: { newValue in
+                    settings.streakReminders = newValue
+                    Task {
+                        if newValue { _ = await watcher.requestAuthorization() }
+                        await streakReminders.reschedule()
+                    }
+                }
+            ))
+            .tint(Theme.accent)
+            if settings.streakReminders {
+                DatePicker("Uhrzeit", selection: reminderTime, displayedComponents: .hourAndMinute)
+            }
+            if (settings.notifyNewEpisodes || settings.notifyAppUpdates || settings.streakReminders) && isDenied {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Mitteilungen sind für AniWorld in den iOS-Einstellungen ausgeschaltet.")
                         .font(.footnote)
@@ -280,7 +332,7 @@ private struct NotificationsSection: View {
         } header: {
             Text("Benachrichtigungen")
         } footer: {
-            Text("Die App prüft deine Favoriten selbst, ohne Server: beim Öffnen und, soweit iOS es zulässt, gelegentlich im Hintergrund. Bei per Sideload installierten Apps ist die Hintergrundprüfung unzuverlässig; sicher funktioniert die Prüfung beim Öffnen der App. Beim ersten Mal wird nur der aktuelle Stand gemerkt.")
+            Text("Die App prüft deine Favoriten selbst, ohne Server: beim Öffnen und, soweit iOS es zulässt, gelegentlich im Hintergrund. Bei per Sideload installierten Apps ist die Hintergrundprüfung unzuverlässig; sicher funktioniert die Prüfung beim Öffnen der App. Beim ersten Mal wird nur der aktuelle Stand gemerkt. Die Streak-Erinnerung kommt zur gewählten Uhrzeit nur an Tagen, an denen du noch keine ganze Folge geschaut hast, und um 22:30 noch einmal, wenn dein Streak sonst endet.")
         }
     }
 }

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AniWorld</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+</head>
+<body>
+  <!-- Standard-Player des Cast Application Framework, per CSS im AniWorld-Design -->
+  <cast-media-player id="player"></cast-media-player>
+
+  <!-- Startbildschirm, solange nichts abgespielt wird -->
+  <div id="idle" class="screen">
+    <div class="glow glow-a"></div>
+    <div class="glow glow-b"></div>
+    <div class="idle-content">
+      <img class="idle-icon" src="icon.png" alt="">
+      <h1>AniWorld</h1>
+      <p>Wähle auf deinem iPhone eine Folge – sie startet hier.</p>
+    </div>
+  </div>
+
+  <!-- Info-Karte bei Pause und beim Puffern: Cover, Serie, Folge -->
+  <div id="info" class="screen hidden">
+    <div id="info-bg"></div>
+    <div class="info-content">
+      <div id="info-cover"></div>
+      <div class="info-text">
+        <div id="info-state" class="pill">Pausiert</div>
+        <h2 id="info-title"></h2>
+        <p id="info-subtitle"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kurzer Hinweis (Pause, +10 s, Intro übersprungen, ...) -->
+  <div id="hint" class="hint hidden"></div>
+
+  <!-- Hinweis auf die nächste Folge -->
+  <div id="next" class="next hidden">
+    <div class="next-label">Nächste Folge <span id="next-seconds"></span></div>
+    <div id="next-title"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

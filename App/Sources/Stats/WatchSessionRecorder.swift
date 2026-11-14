@@ -40,6 +40,10 @@ final class WatchSessionRecorder {
     /// Highest watched fraction of the current episode (survives session splits).
     private var maxFraction: Double = 0
     private var endedNaturally = false
+    /// The completion of the current episode was already stored (once per episode).
+    private var completionStored = false
+    /// Called when watching this episode turned today into a streak day; passes the new streak length.
+    var onStreakExtended: ((Int) -> Void)?
 
     init(store: WatchStatsStore) {
         self.store = store
@@ -52,6 +56,7 @@ final class WatchSessionRecorder {
         if !sameEpisode {
             maxFraction = 0
             endedNaturally = false
+            completionStored = false
         }
         self.context = context
         lastTickAt = nil
@@ -64,6 +69,7 @@ final class WatchSessionRecorder {
         context = nil
         maxFraction = 0
         endedNaturally = false
+        completionStored = false
     }
 
     func updateContext(language: StreamLanguage?, hoster: String?) {
@@ -101,6 +107,19 @@ final class WatchSessionRecorder {
             o.lastPlayingAt = now
             open = o
         }
+        storeCompletionIfNeeded()
+    }
+
+    /// As soon as the episode counts as completed, the running session is stored right away (and
+    /// continues in a new one), so the streak updates during the episode and not only when leaving it.
+    private func storeCompletionIfNeeded() {
+        guard !completionStored, endedNaturally || maxFraction >= Self.completedFraction,
+              let o = open, o.watchedSeconds >= 30 else { return }
+        completionStored = true
+        let wasDone = store.streak().todayDone
+        finish()
+        let after = store.streak()
+        if !wasDone && after.todayDone { onStreakExtended?(after.current) }
     }
 
     /// Media seconds skipped by an intro / outro / recap skip.
@@ -114,6 +133,7 @@ final class WatchSessionRecorder {
     func markEnded() {
         endedNaturally = true
         maxFraction = 1
+        storeCompletionIfNeeded()
     }
 
     /// Ends the running session (if any) and stores it.

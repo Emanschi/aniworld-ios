@@ -5,20 +5,43 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 
 ## Git & Push
 
-- Gearbeitet wird auf dem Branch `dev`. Nicht direkt auf `main` committen.
+- Gearbeitet wird auf einem eigenen Feature-Branch, der von `dev` abzweigt, benannt nach Person und
+  Thema: `emanschi/<thema>` bzw. `axsel/<thema>` (z. B. `emanschi/streak-erinnerung`). Ein Branch pro
+  Aufgabe, kurzlebig halten.
+- Nicht direkt auf `dev` oder `main` committen. Feature-Branches kommen per Pull Request nach `dev`;
+  vor dem PR `dev` in den Branch mergen und Konflikte dort lösen.
+- Fremde Feature-Branches (vom jeweils anderen) nicht ändern, rebasen oder mergen, außer der User sagt es.
 - Commits nur **lokal**. Vor jedem `git push` (egal welcher Branch) dem User Bescheid sagen und
   **auf seine ausdrückliche Bestätigung warten**. Eine frühere Freigabe gilt nicht für spätere Pushes.
 - Keine Force-Pushes, kein Löschen von Remote-Branches oder Tags, keine Release-Tags (`v*`) ohne Freigabe.
+- Commits und Tags nur mit der GitHub-noreply-Adresse der jeweiligen Person, nie mit einer privaten
+  E-Mail (`git config user.email` vor dem ersten Commit prüfen): Emanschi
+  `176057845+Emanschi@users.noreply.github.com`, Axsel1 `274859569+Axsel1-eins@users.noreply.github.com`.
 - `main` wird nur per Merge von `dev` aktualisiert, nachdem der User zugestimmt hat.
 
 ## CI / Pipeline
 
-- **Die Pipeline (`.github/workflows/**`, `scripts/build-ipa.sh`, `scripts/update-altstore-source.py`)
-  darf ohne vorherige Rückfrage beim User nicht geändert werden.** Das gilt auch für scheinbar kleine
-  Änderungen (Trigger, Runner, Action-Versionen, Caching). Erst fragen, dann ändern.
-- Gebaut wird nur auf `main` (Push), bei Tags `v*` und per manuellem Start. `dev` und Pull Requests
-  haben bewusst keine Pipeline, um GitHub-Actions-Minuten zu sparen (privates Repo, macOS = 10x).
+- **Die Pipeline (`.github/workflows/**`, `scripts/build-ipa.sh`, `scripts/update-altstore-source.py`,
+  `scripts/release-notes.py`) darf ohne vorherige Rückfrage beim User nicht geändert werden.** Das gilt
+  auch für scheinbar kleine Änderungen (Trigger, Runner, Action-Versionen, Caching). Erst fragen, dann
+  ändern.
+- Eine IPA wird **nur für Releases** gebaut: ein Tag `vX.Y.Z` auf einem Commit von `main`. Pushes auf
+  `main`, `dev`, Feature-Branches und Pull Requests starten nichts (GitHub-Actions-Minuten sparen,
+  privates Repo, macOS = 10x). Ein manueller Start (*Run workflow*) baut nur eine Test-IPA als Artefakt,
+  ohne Release; vorher den User fragen.
 - Keine neuen Workflows anlegen und keine CI-Läufe auf anderen Branches aktivieren.
+
+## Release (nur nach Freigabe durch den User)
+
+1. Alles für das Release ist per PR auf `dev`; der oberste Eintrag in `App/Resources/PatchNotes.json`
+   hat die neue Version.
+2. `MARKETING_VERSION` in `project.yml` auf die neue Version setzen (per PR nach `dev`).
+3. `dev` nach `main` mergen.
+4. Auf `main` den Tag `vX.Y.Z` setzen und pushen. Die Pipeline prüft, dass der Tag auf `main` liegt und
+   es Patchnotes für die Version gibt, baut die IPA und erstellt das GitHub-Release mit IPA,
+   AltStore-Quelle und den Patchnotes als Beschreibung.
+5. Schlägt der Build fehl, entsteht kein Release: Fehler per PR beheben und eine neue Patch-Version
+   taggen (Tags nicht löschen oder verschieben).
 
 ## Lizenzen & Pflichtangaben (immer!)
 
@@ -60,6 +83,6 @@ Sie kommen vom Repo-Owner (Emanschi) und haben Vorrang vor eigenen Annahmen.
 
 - Größere Aufgaben werden geplant und auf Sonnet-Subagents verteilt, die bei Bedarf Haiku-Agents für
   mechanische Hilfsarbeiten nutzen. Parallel arbeitende Agents bekommen eigene Worktrees und nur
-  getrennte Dateien.
+  getrennte Dateien; ihre Ergebnisse landen im Feature-Branch der Aufgabe, nicht direkt auf `dev`.
 - `AniworldKit` lokal mit `swift build` / `swift test` prüfen. Die App selbst kompiliert nur in der
   CI auf `main`, also UI-Code mit gut bekannten iOS-17-APIs schreiben.

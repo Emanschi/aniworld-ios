@@ -26,6 +26,7 @@ struct AniworldApp: App {
                 .environment(env.downloads)
                 .environment(env.watcher)
                 .environment(env.stats)
+                .environment(env.streakReminders)
                 .environment(\.aniworld, env.service)
                 .preferredColorScheme(.dark)
                 .onChange(of: scenePhase) { _, newPhase in
@@ -33,9 +34,11 @@ struct AniworldApp: App {
                     case .active:
                         Task { await env.watcher.runIfDue() }
                         env.widgets.appBecameActive()
+                        env.streakReminders.scheduleSoon()
                     case .background:
                         env.watcher.scheduleBackgroundRefresh()
                         env.widgets.flush()
+                        Task { await env.streakReminders.reschedule() }
                     default:
                         break
                     }
@@ -56,6 +59,7 @@ struct AppEnvironment {
     let watcher: EpisodeWatcher
     let stats: WatchStatsStore
     let widgets: WidgetSnapshotWriter
+    let streakReminders: StreakReminderScheduler
 
     static func live() -> AppEnvironment {
         make(service: AniworldClient())
@@ -72,7 +76,8 @@ struct AppEnvironment {
             downloads: DownloadManager(service: service, settings: settings, library: library),
             watcher: EpisodeWatcher(service: service, library: library, settings: settings),
             stats: stats,
-            widgets: WidgetSnapshotWriter(stats: stats, library: library)
+            widgets: WidgetSnapshotWriter(stats: stats, library: library),
+            streakReminders: StreakReminderScheduler(stats: stats, settings: settings)
         )
     }
 }

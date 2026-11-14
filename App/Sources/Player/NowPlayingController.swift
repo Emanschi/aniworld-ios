@@ -98,6 +98,7 @@ final class NowPlayingController {
         }
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
     }
 
     private func loadArtwork(_ url: URL?) {
@@ -126,5 +127,6 @@ final class NowPlayingController {
         center.skipBackwardCommand.preferredIntervals = []
         center.nextTrackCommand.isEnabled = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
 }
