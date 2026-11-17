@@ -64,37 +64,36 @@ final class AppUpdateChecker {
 
     private(set) var availableUpdate: AppUpdate?
     private(set) var state: State = .idle
-    /// Version the user dismissed the banner for.
+    /// Version the user tapped "Später" for in this app session (the popup returns on the next launch).
     private(set) var dismissedVersion: String?
 
     static let releasesPage = URL(string: "https://github.com/Emanschi/aniworld-ios/releases")!
     private static let apiURL = URL(string: "https://api.github.com/repos/Emanschi/aniworld-ios/releases/latest")!
-    private static let throttle: TimeInterval = 6 * 60 * 60
+    /// Every app start/return checks again; this only absorbs quick foreground/background bounces.
+    private static let throttle: TimeInterval = 60
 
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private let lastCheckKey = "updates.lastCheck"
     @ObservationIgnored private let cacheKey = "updates.cachedRelease"
     @ObservationIgnored private let notifiedKey = "updates.notifiedVersion"
-    @ObservationIgnored private let dismissedKey = "updates.dismissedVersion"
-
     private init() {
-        dismissedVersion = defaults.string(forKey: dismissedKey)
+        // Older versions stored "Später" permanently; the popup now asks on every launch.
+        defaults.removeObject(forKey: "updates.dismissedVersion")
         if let cached = loadCache() { apply(cached) }
     }
 
-    /// True when the banner should be shown.
-    var shouldShowBanner: Bool {
+    /// True when the update popup should be shown (nothing is shown while up to date).
+    var shouldShowPopup: Bool {
         guard let update = availableUpdate else { return false }
         return update.version != dismissedVersion
     }
 
-    func dismissBanner() {
-        guard let update = availableUpdate else { return }
-        dismissedVersion = update.version
-        defaults.set(update.version, forKey: dismissedKey)
+    /// "Später aktualisieren": hides the popup until the app is launched again.
+    func postpone() {
+        dismissedVersion = availableUpdate?.version
     }
 
-    /// Checks GitHub (throttled to every 6 h unless `force`).
+    /// Checks GitHub on every app start and return (throttled to `throttle` unless `force`).
     func check(force: Bool = false) async {
         if state == .checking { return }
         let last: Date? = defaults.object(forKey: lastCheckKey) as? Date

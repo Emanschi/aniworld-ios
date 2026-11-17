@@ -1,5 +1,12 @@
 [
   {
+    "version": "0.5.3",
+    "date": "2026-11-17",
+    "notes": [
+      "Gibt es eine neue Version, fragt die App jetzt bei jedem Start per Popup nach – mit „Zum Release“ oder „Später aktualisieren“. Ohne Update erscheint nichts."
+    ]
+  },
+  {
     "version": "0.5.2",
     "date": "2026-11-14",
     "notes": [
