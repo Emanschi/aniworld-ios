@@ -103,7 +103,8 @@ final class DownloadNetworkWatcher: @unchecked Sendable {
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            let onWiFi = path.status == .satisfied
+            // A personal hotspot is Wi-Fi marked as expensive: it does not count as "WLAN" here.
+            let onWiFi = path.status == .satisfied && !path.isExpensive
                 && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
             self.lock.lock()
             let changed = self._wifi != onWiFi
@@ -578,6 +579,7 @@ final class DownloadManager {
             }
             let wifiOnly = settings.downloadOnlyOnWiFi || job.waitsForWiFi == true
             request.allowsCellularAccess = !wifiOnly
+            request.allowsExpensiveNetworkAccess = !wifiOnly
             if wifiOnly { wifiOnlyTasks.insert(id) } else { wifiOnlyTasks.remove(id) }
             guard let session = fileSession else {
                 markFailed(id: id, message: "Download-Sitzung nicht verfügbar")
@@ -590,7 +592,8 @@ final class DownloadManager {
             wifiOnlyTasks.remove(id)
             let asset = AVURLAsset(url: stream.url, options: [
                 "AVURLAssetHTTPHeaderFieldsKey": stream.headers,
-                AVURLAssetAllowsCellularAccessKey: !(settings.downloadOnlyOnWiFi || job.waitsForWiFi == true)
+                AVURLAssetAllowsCellularAccessKey: !(settings.downloadOnlyOnWiFi || job.waitsForWiFi == true),
+                AVURLAssetAllowsExpensiveNetworkAccessKey: !(settings.downloadOnlyOnWiFi || job.waitsForWiFi == true)
             ])
             guard let session = hlsSession,
                   let task = session.makeAssetDownloadTask(

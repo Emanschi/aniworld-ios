@@ -6,7 +6,8 @@
       "Neu: Beim Streamen über mobile Daten warnt dich der Player einmal pro App-Start vor dem hohen Datenverbrauch und zeigt den geschätzten Verbrauch der Folge. Dort kannst du auch gleich die Qualität senken.",
       "Neu: Streaming-Qualität getrennt für WLAN und mobile Daten (Automatisch, Hoch, Mittel, Datensparend) in den Einstellungen unter „Mobile Daten“, inklusive ungefährem Verbrauch pro Stunde. Gilt auch während der Wiedergabe, aber nur bei Streams mit mehreren Qualitätsstufen.",
       "Neu: Startest du einen Download über mobile Daten, fragt die App nach. Mit „Später im WLAN laden“ startet er automatisch, sobald du wieder im WLAN bist.",
-      "Neu: In den Statistiken zeigt die Karte „Datenverbrauch“, wie viel Daten du gestreamt und heruntergeladen hast, aufgeteilt in WLAN und mobile Daten. Gemessen wird ab dieser Version."
+      "Neu: In den Statistiken zeigt die Karte „Datenverbrauch“, wie viel Daten du gestreamt und heruntergeladen hast, aufgeteilt in WLAN und mobile Daten. Gemessen wird ab dieser Version.",
+      "Ein persönlicher Hotspot zählt jetzt überall als mobile Daten: Downloads fragen nach und „Später im WLAN laden“ wartet auf ein echtes WLAN."
     ]
   },
   {
