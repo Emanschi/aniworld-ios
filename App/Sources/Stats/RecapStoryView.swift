@@ -71,7 +71,7 @@ struct RecapStoryView: View {
     let onClose: () -> Void
 
     private enum Page: Hashable {
-        case intro, total, topSeries, topFive, genres, rhythm, binge, extras, outro
+        case intro, total, topSeries, topFive, genres, rhythm, binge, extras, data, outro
     }
 
     @State private var index = 0
@@ -84,6 +84,7 @@ struct RecapStoryView: View {
         if stats.mostActiveWeekday != nil { result.append(.rhythm) }
         if let b = stats.longestBinge, b.episodes >= 2 { result.append(.binge) }
         result.append(.extras)
+        if stats.dataUsage.totalBytes >= 50_000_000 { result.append(.data) }
         result.append(.outro)
         return result
     }
@@ -168,6 +169,7 @@ struct RecapStoryView: View {
         case .rhythm: colors = [Color(red: 0.95, green: 0.60, blue: 0.20), Theme.accentPink]
         case .binge: colors = [Theme.accentPink, Color(red: 0.35, green: 0.10, blue: 0.45)]
         case .extras: colors = [Color(red: 0.30, green: 0.30, blue: 0.90), Theme.accentPink]
+        case .data: colors = [Color(red: 0.10, green: 0.50, blue: 0.85), Color(red: 0.10, green: 0.65, blue: 0.60)]
         case .outro: colors = [Theme.accentPink, Theme.accent]
         }
         return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -184,6 +186,7 @@ struct RecapStoryView: View {
         case .rhythm: rhythmPage
         case .binge: bingePage
         case .extras: extrasPage
+        case .data: dataPage
         case .outro: outroPage
         }
     }
@@ -335,6 +338,19 @@ struct RecapStoryView: View {
             if stats.newSeriesCount > 0 {
                 sub("\(StatsFormat.count(stats.newSeriesCount, singular: "neue Serie", plural: "neue Serien")) angefangen.")
             }
+            Spacer()
+        }
+    }
+
+    private var dataPage: some View {
+        let usage: DataUsageStats = stats.dataUsage
+        return VStack(alignment: .leading, spacing: 16) {
+            Spacer()
+            headline("Dein Datenverbrauch")
+            big(StatsFormat.bytes(usage.totalBytes))
+            sub("\(StatsFormat.percent(usage.wifiShare)) davon im WLAN, \(StatsFormat.percent(usage.cellularShare)) über mobile Daten.")
+            sub("Streaming \(StatsFormat.bytes(usage.streamingBytes)) · Downloads \(StatsFormat.bytes(usage.downloadBytes))")
+            if let fun = usage.funFact { sub(fun) }
             Spacer()
         }
     }

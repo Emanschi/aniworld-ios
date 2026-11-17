@@ -45,6 +45,17 @@ final class CastStreamProxy: @unchecked Sendable {
     private var tokenOrder: [String] = []
     private var connections: [ObjectIdentifier: ProxyConnection] = [:]
 
+    /// Reports every chunk of upstream data the proxy loads (statistics: data usage while casting).
+    private var byteHandler: (@Sendable (Int) -> Void)?
+    var onUpstreamBytes: (@Sendable (Int) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return byteHandler }
+        set { lock.lock(); byteHandler = newValue; lock.unlock() }
+    }
+
+    fileprivate func noteUpstreamBytes(_ count: Int) {
+        onUpstreamBytes?(count)
+    }
+
     fileprivate let router = UpstreamRouter()
     fileprivate let session: URLSession
 
@@ -788,6 +799,7 @@ private final class ProxyConnection: @unchecked Sendable {
     func upstreamDidReceive(_ data: Data) {
         queue.async { [self] in
             guard !finished, !closing else { return }
+            proxy.noteUpstreamBytes(data.count)
             switch mode {
             case .buffer:
                 bodyBuffer.append(data)

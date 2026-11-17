@@ -49,8 +49,37 @@ public enum TimeOfDay: Int, CaseIterable, Hashable, Sendable {
     }
 }
 
+/// Measured data volume of a period (streaming = AVPlayer access log, downloads = bytes written).
+public struct DataUsageStats: Hashable, Sendable {
+    public var wifiBytes: Int64 = 0
+    public var cellularBytes: Int64 = 0
+    public var streamingBytes: Int64 = 0
+    public var downloadBytes: Int64 = 0
+    /// Streamed episodes with a measured data volume.
+    public var measuredEpisodes = 0
+    /// Watch hours of the sessions that have a measured data volume.
+    public var measuredHours: Double = 0
+    public var funFact: String?
+
+    public var totalBytes: Int64 { wifiBytes + cellularBytes }
+    public var hasData: Bool { totalBytes > 0 }
+    /// 0...1 share of Wi-Fi in the total volume.
+    public var wifiShare: Double { totalBytes > 0 ? Double(wifiBytes) / Double(totalBytes) : 0 }
+    /// 0...1 share of mobile data in the total volume.
+    public var cellularShare: Double { totalBytes > 0 ? Double(cellularBytes) / Double(totalBytes) : 0 }
+    /// Streaming bytes per streamed episode (nil without measured episodes).
+    public var bytesPerEpisode: Int64? {
+        measuredEpisodes > 0 && streamingBytes > 0 ? streamingBytes / Int64(measuredEpisodes) : nil
+    }
+    /// Streaming bytes per watched hour (nil without measured watch time).
+    public var bytesPerHour: Int64? {
+        measuredHours > 0.01 && streamingBytes > 0 ? Int64(Double(streamingBytes) / measuredHours) : nil
+    }
+}
+
 public struct WatchStats: Hashable, Sendable {
     public var hasData = false
+    public var dataUsage = DataUsageStats()
     public var totalSeconds: Double = 0
     public var sessionCount = 0
     /// Distinct episodes watched (at least partly).
@@ -101,12 +130,15 @@ public struct WatchStatsCalculator {
     public var calendar: Calendar
     public var seriesMeta: [String: SeriesMeta]
     public var previousInterval: DateInterval?
+    public var dataUsage: [DataUsageEntry]
 
     /// A gap shorter than this keeps a binge chain together.
     public static let bingeGap: TimeInterval = 15 * 60
 
     public init(sessions: [WatchSession], interval: DateInterval, calendar: Calendar = .current,
-                seriesMeta: [String: SeriesMeta] = [:], previousInterval: DateInterval? = nil) {
+                seriesMeta: [String: SeriesMeta] = [:], previousInterval: DateInterval? = nil,
+                dataUsage: [DataUsageEntry] = []) {
+        self.dataUsage = dataUsage
         self.sessions = sessions
         self.interval = interval
         self.calendar = calendar
@@ -150,6 +182,8 @@ public struct WatchStatsCalculator {
                 .reduce(0) { (acc: Double, s: WatchSession) -> Double in acc + s.watchedSeconds }
             stats.previousTotalSeconds = prev
         }
+
+        stats.dataUsage = computeDataUsage()
 
         guard !inPeriod.isEmpty else { return stats }
         stats.hasData = true
@@ -274,6 +308,45 @@ public struct WatchStatsCalculator {
 
         stats.funComparison = Self.funComparison(totalSeconds: total)
         return stats
+    }
+
+    /// Streaming volume from the sessions plus download volume from the per-day entries.
+    private func computeDataUsage() -> DataUsageStats {
+        var usage = DataUsageStats()
+        var episodes = Set<String>()
+        for s in sessions where contains(interval, s.startedAt) && !s.wasOffline {
+            guard s.bytesWiFi != nil || s.bytesCellular != nil else { continue }
+            usage.wifiBytes += s.bytesWiFi ?? 0
+            usage.cellularBytes += s.bytesCellular ?? 0
+            usage.streamingBytes += s.totalBytes
+            usage.measuredHours += s.watchedSeconds / 3600
+            episodes.insert(s.episodeKey)
+        }
+        usage.measuredEpisodes = episodes.count
+        for e in dataUsage where contains(interval, e.day) {
+            usage.wifiBytes += e.wifiBytes
+            usage.cellularBytes += e.cellularBytes
+            usage.downloadBytes += e.totalBytes
+        }
+        usage.funFact = Self.dataFunFact(totalBytes: usage.totalBytes)
+        return usage
+    }
+
+    /// A playful comparison for the data volume (nil when there is almost nothing to compare).
+    public static func dataFunFact(totalBytes: Int64) -> String? {
+        let bytes = Double(totalBytes)
+        let dvds = bytes / 4.7e9 // single-layer DVD
+        if dvds >= 1 {
+            let n = Int(dvds)
+            return n == 1 ? "Das ist etwa eine volle DVD." : "Das sind etwa \(n) volle DVDs."
+        }
+        let musicHours = bytes / 57.6e6 // 128 kbit/s
+        if musicHours >= 1 {
+            let n = Int(musicHours)
+            return n == 1 ? "Das ist so viel wie eine Stunde Musik-Streaming."
+                          : "Das ist so viel wie \(n) Stunden Musik-Streaming."
+        }
+        return nil
     }
 
     private func longestStreak(days: Set<Date>) -> Int {

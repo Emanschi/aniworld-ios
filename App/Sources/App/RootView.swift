@@ -14,6 +14,7 @@ struct RootView: View {
     @State private var didCheckPatchNotes = false
     @State private var showStats = false
     @State private var pendingDeepLink: URL?
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         @Bindable var playback = playback
@@ -50,16 +51,29 @@ struct RootView: View {
         }) {
             SyncOnboardingView()
         }
-        .overlay(alignment: .top) {
-            if updates.shouldShowBanner, let update = updates.availableUpdate {
-                UpdateBannerView(update: update) {
-                    withAnimation(.easeInOut(duration: 0.25)) { updates.dismissBanner() }
-                }
-                .padding(.top, 6)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
+        .sheet(item: conflictBinding) { (info: SyncConflictInfo) in
+            SyncConflictSheet(info: info)
         }
-        .animation(.easeInOut(duration: 0.25), value: updates.shouldShowBanner)
+        .alert(
+            "Update verfügbar",
+            isPresented: Binding<Bool>(
+                // Only when no other sheet (sync setup, patch notes) or the player is on screen.
+                get: { updates.shouldShowPopup && playback.activeSession == nil
+                    && patchNotes == nil && !sync.showOnboarding },
+                set: { shown in if !shown { updates.postpone() } }
+            ),
+            presenting: updates.availableUpdate
+        ) { (update: AppUpdate) in
+            Button("Zum Release") {
+                updates.postpone()
+                openURL(update.url)
+            }
+            Button("Später aktualisieren", role: .cancel) {
+                updates.postpone()
+            }
+        } message: { (update: AppUpdate) in
+            Text("AniWorld \(update.version) ist verfügbar (installiert: \(AppVersion.version)). Auf der Release-Seite findest du die IPA und die Anleitung zum Installieren.")
+        }
         .sheet(item: $patchNotes) { (payload: PatchNotesPayload) in
             PatchNotesSheet(entries: payload.entries)
         }
@@ -94,6 +108,7 @@ struct RootView: View {
             await updates.check()
         }
         .onChange(of: sync.showOnboarding) { _, _ in processDeferred() }
+        .onChange(of: sync.conflict == nil) { _, _ in processDeferred() }
         .onChange(of: playback.activeSession == nil) { _, _ in processDeferred() }
         .onChange(of: playback.isMinimized) { _, _ in processDeferred() }
         .onChange(of: patchNotes == nil) { _, _ in processDeferred() }
@@ -111,9 +126,18 @@ struct RootView: View {
         }
     }
 
+    /// Der Abgleich-Dialog wartet, solange Serien-/Statistik-Sheet oben liegen (zwei Sheets gleichzeitig
+    /// gehen nicht). Er lässt sich nur über seine Buttons schließen, deshalb ignoriert `set` alles.
+    private var conflictBinding: Binding<SyncConflictInfo?> {
+        Binding(
+            get: { (showStats || watcher.pendingOpenSeries != nil) ? nil : sync.conflict },
+            set: { _ in }
+        )
+    }
+
     /// True, solange ein Sheet von RootView oder der Player (nicht minimiert) im Vordergrund ist.
     private var isBlockingPresentation: Bool {
-        sync.showOnboarding || patchNotes != nil || watcher.pendingOpenSeries != nil || showStats
+        sync.showOnboarding || sync.conflict != nil || patchNotes != nil || watcher.pendingOpenSeries != nil || showStats
             || (playback.activeSession != nil && !playback.isMinimized)
     }
 
@@ -158,7 +182,7 @@ struct RootView: View {
     /// Shows pending patch notes only while no other sheet / cover is up.
     private func presentPatchNotesIfPossible() {
         guard let entries = pendingPatchNotes, patchNotes == nil else { return }
-        guard !sync.showOnboarding, playback.activeSession == nil,
+        guard !sync.showOnboarding, sync.conflict == nil, playback.activeSession == nil,
               watcher.pendingOpenSeries == nil, !showStats else { return }
         pendingPatchNotes = nil
         patchNotes = PatchNotesPayload(entries: entries)

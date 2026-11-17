@@ -13,6 +13,7 @@ struct PlayerScreen: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(DownloadManager.self) private var downloads
     @Environment(WatchStatsStore.self) private var stats
+    @Environment(NetworkStatus.self) private var network
     @Environment(\.aniworld) private var service
     @Environment(\.scenePhase) private var scenePhase
 
@@ -37,7 +38,7 @@ struct PlayerScreen: View {
             guard viewModel == nil else { return }
             let vm = PlayerViewModel(session: session)
             vm.attach(service: service, library: library, settings: settings, coordinator: playback,
-                      downloads: downloads, stats: stats)
+                      downloads: downloads, stats: stats, network: network)
             viewModel = vm
             vm.start()
         }
@@ -67,6 +68,13 @@ struct PlayerScreen: View {
         .onChange(of: playback.isMinimized) { _, minimized in
             if minimized { PlayerOrientation.leavePlayer() } else { PlayerOrientation.enterPlayer() }
             updateBrightness()
+        }
+        // Quality limit follows the connection type and the settings, also during playback.
+        .onChange(of: viewModel?.effectiveStreamQuality) { _, _ in
+            viewModel?.applyStreamQuality()
+        }
+        .onChange(of: network.usesMobileData) { _, _ in
+            viewModel?.applyStreamQuality()
         }
         // The PiP button keeps the app active, so the scene phase alone does not cover it.
         .onChange(of: viewModel?.isPictureInPictureActive ?? false) { _, _ in
@@ -223,7 +231,12 @@ private struct PlayerContentView: View {
                 .zIndex(9)
             }
             panelLayer
+            if vm.cellularWarningVisible {
+                CellularWarningCard(vm: vm)
+                    .zIndex(10)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: vm.cellularWarningVisible)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: vm.streakCelebration)
         .environment(\.colorScheme, .dark)
         .task(id: HideKey(token: activityToken, shown: controlsShown, allowed: autoHideAllowed)) {
