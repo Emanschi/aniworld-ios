@@ -14,6 +14,8 @@ final class WatchStatsStore {
     /// slug → genres / age rating (filled whenever a series page is loaded).
     private(set) var seriesMeta: [String: SeriesMeta] = [:]
     private(set) var resetAt: Date?
+    /// Download data volume per device and day (own entries and, after a sync, the other devices').
+    private(set) var dataUsage: [DataUsageEntry] = []
 
     /// Increases with every change made on this device (the sync layer uses it to decide on writing).
     @ObservationIgnored private(set) var localRevision = 0
@@ -22,6 +24,7 @@ final class WatchStatsStore {
 
     @ObservationIgnored let deviceID: String
     @ObservationIgnored private let fileURL: URL?
+    @ObservationIgnored private var lastUsageNotify: Date?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var lifecycleTokens: [NSObjectProtocol] = []
 
@@ -32,16 +35,18 @@ final class WatchStatsStore {
         var sessions: [WatchSession] = []
         var seriesMeta: [String: SeriesMeta] = [:]
         var resetAt: Date?
+        var dataUsage: [DataUsageEntry] = []
 
         init() {}
 
-        enum CodingKeys: String, CodingKey { case sessions, seriesMeta, resetAt }
+        enum CodingKeys: String, CodingKey { case sessions, seriesMeta, resetAt, dataUsage }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             sessions = try c.decodeIfPresent([WatchSession].self, forKey: .sessions) ?? []
             seriesMeta = try c.decodeIfPresent([String: SeriesMeta].self, forKey: .seriesMeta) ?? [:]
             resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
+            dataUsage = try c.decodeIfPresent([DataUsageEntry].self, forKey: .dataUsage) ?? []
         }
     }
 
@@ -91,10 +96,11 @@ final class WatchStatsStore {
         guard let fileURL, let data = try? Data(contentsOf: fileURL),
               let snap = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         let merged = StatsMerge.merge([StatsState(sessions: snap.sessions, seriesMeta: snap.seriesMeta,
-                                                  resetAt: snap.resetAt)])
+                                                  resetAt: snap.resetAt, dataUsage: snap.dataUsage)])
         sessions = merged.sessions
         seriesMeta = merged.seriesMeta
         resetAt = merged.resetAt
+        dataUsage = merged.dataUsage
     }
 
     private func scheduleSave(notify: Bool) {
@@ -120,6 +126,7 @@ final class WatchStatsStore {
         snap.sessions = sessions
         snap.seriesMeta = seriesMeta
         snap.resetAt = resetAt
+        snap.dataUsage = dataUsage
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? data.write(to: fileURL, options: [.atomic])
     }
@@ -136,6 +143,30 @@ final class WatchStatsStore {
         pruneOld()
         scheduleSave(notify: true)
         flush()
+    }
+
+    /// Adds downloaded bytes to today's entry of this device. Called often while a download runs, so it
+    /// only saves with the usual delay and tells the sync layer at most once a minute.
+    func addDownloadBytes(_ bytes: Int64, cellular: Bool, now: Date = Date(), calendar: Calendar = .current) {
+        guard bytes > 0 else { return }
+        let day: Date = calendar.startOfDay(for: now)
+        let id = "\(deviceID)-dl-\(Int(day.timeIntervalSince1970))"
+        var entry: DataUsageEntry
+        if let index = dataUsage.firstIndex(where: { $0.id == id }) {
+            entry = dataUsage[index]
+        } else {
+            entry = DataUsageEntry(id: id, day: day, deviceID: deviceID, updatedAt: now)
+        }
+        if cellular { entry.cellularBytes += bytes } else { entry.wifiBytes += bytes }
+        entry.updatedAt = now
+        if let index = dataUsage.firstIndex(where: { $0.id == id }) {
+            dataUsage[index] = entry
+        } else {
+            dataUsage.append(entry)
+        }
+        let notify = lastUsageNotify.map { now.timeIntervalSince($0) > 60 } ?? true
+        if notify { lastUsageNotify = now }
+        scheduleSave(notify: notify)
     }
 
     /// Remembers genres / age rating of a series (called whenever a series page was loaded).
@@ -155,6 +186,7 @@ final class WatchStatsStore {
     func reset() {
         sessions = []
         seriesMeta = [:]
+        dataUsage = []
         resetAt = Date()
         scheduleSave(notify: true)
         flush()
@@ -163,6 +195,7 @@ final class WatchStatsStore {
     private func pruneOld() {
         let cutoff = Date().addingTimeInterval(-StatsMerge.retention)
         sessions.removeAll { $0.endedAt <= cutoff }
+        dataUsage.removeAll { $0.updatedAt <= cutoff }
     }
 
     // MARK: Convenience for the UI
@@ -175,7 +208,8 @@ final class WatchStatsStore {
             interval: period.interval(calendar: calendar),
             calendar: calendar,
             seriesMeta: seriesMeta,
-            previousInterval: period.previousInterval(calendar: calendar)
+            previousInterval: period.previousInterval(calendar: calendar),
+            dataUsage: dataUsage
         ).compute()
     }
 
@@ -188,12 +222,13 @@ final class WatchStatsStore {
 
     /// Everything known locally (the sync layer merges it with the other devices' data).
     func exportState() -> StatsState {
-        StatsState(sessions: sessions, seriesMeta: seriesMeta, resetAt: resetAt)
+        StatsState(sessions: sessions, seriesMeta: seriesMeta, resetAt: resetAt, dataUsage: dataUsage)
     }
 
     /// What this device writes into its own sync file: only sessions that were recorded here.
     func exportOwnState() -> StatsState {
-        StatsState(sessions: sessions.filter { $0.deviceID == deviceID }, seriesMeta: seriesMeta, resetAt: resetAt)
+        StatsState(sessions: sessions.filter { $0.deviceID == deviceID }, seriesMeta: seriesMeta, resetAt: resetAt,
+                   dataUsage: dataUsage.filter { $0.deviceID == deviceID })
     }
 
     /// Replaces the local data with a merged state. Does not trigger `onChange`.
@@ -202,6 +237,7 @@ final class WatchStatsStore {
         sessions = merged.sessions
         seriesMeta = merged.seriesMeta
         resetAt = merged.resetAt
+        dataUsage = merged.dataUsage
         scheduleSave(notify: false)
     }
 }

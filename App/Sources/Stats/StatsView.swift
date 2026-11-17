@@ -41,6 +41,7 @@ struct StatsView: View {
                     if !stats.topGenres.isEmpty { genresCard(stats) }
                     if !stats.languages.isEmpty { languagesCard(stats) }
                     rhythmCard(stats)
+                    if stats.dataUsage.hasData { dataUsageCard(stats.dataUsage) }
                     funFactsCard(stats)
                 } else {
                     emptyCard
@@ -350,6 +351,67 @@ struct StatsView: View {
                 }
             }
         }
+    }
+
+    private func dataUsageCard(_ usage: DataUsageStats) -> some View {
+        card("Datenverbrauch", icon: "arrow.down.circle.fill") {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(StatsFormat.bytes(usage.totalBytes))
+                    .font(AppFont.display(44))
+                    .foregroundStyle(Theme.accentGradient)
+                GeometryReader { geo in
+                    let width: CGFloat = geo.size.width
+                    let wifiWidth: CGFloat = width * CGFloat(usage.wifiShare)
+                    HStack(spacing: 2) {
+                        if usage.wifiBytes > 0 {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Theme.accent)
+                                .frame(width: max(wifiWidth, 6))
+                        }
+                        if usage.cellularBytes > 0 {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Theme.accentPink)
+                        }
+                    }
+                }
+                .frame(height: 12)
+                HStack(spacing: 16) {
+                    dataLegend("WLAN", bytes: usage.wifiBytes, share: usage.wifiShare, color: Theme.accent)
+                    dataLegend("Mobil", bytes: usage.cellularBytes, share: usage.cellularShare, color: Theme.accentPink)
+                }
+                Text("Streaming \(StatsFormat.bytes(usage.streamingBytes)) · Downloads \(StatsFormat.bytes(usage.downloadBytes))")
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                if let perEpisode = usage.bytesPerEpisode, let perHour = usage.bytesPerHour {
+                    Text("Ø \(StatsFormat.bytes(perEpisode)) pro gestreamter Folge · \(StatsFormat.bytes(perHour)) pro Stunde")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                if let fun = usage.funFact {
+                    Label(fun, systemImage: "opticaldisc.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.white)
+                }
+                Text("Gemessen seit dieser Version; früheres Streaming und frühere Downloads fehlen.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+
+    private func dataLegend(_ title: String, bytes: Int64, share: Double, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 10, height: 10)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(title) · \(StatsFormat.percent(share))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text(StatsFormat.bytes(bytes))
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func funFactsCard(_ stats: WatchStats) -> some View {

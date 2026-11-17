@@ -26,6 +26,8 @@ final class WatchSessionRecorder {
         var watchedSeconds: Double = 0
         var rateSeconds: Double = 0
         var skippedSeconds: Double = 0
+        var bytesWiFi: Int64 = 0
+        var bytesCellular: Int64 = 0
     }
 
     static let maxPauseSeconds: TimeInterval = 10 * 60
@@ -42,6 +44,10 @@ final class WatchSessionRecorder {
     private var endedNaturally = false
     /// The completion of the current episode was already stored (once per episode).
     private var completionStored = false
+    /// Bytes loaded while no session was open yet (start-up buffering) or after one was closed; they
+    /// belong to the next session. Nil until something was measured.
+    private var pendingWiFi: Int64 = 0
+    private var pendingCellular: Int64 = 0
     /// Called when watching this episode turned today into a streak day; passes the new streak length.
     var onStreakExtended: ((Int) -> Void)?
 
@@ -67,6 +73,8 @@ final class WatchSessionRecorder {
     func clear() {
         finish()
         context = nil
+        pendingWiFi = 0
+        pendingCellular = 0
         maxFraction = 0
         endedNaturally = false
         completionStored = false
@@ -95,7 +103,12 @@ final class WatchSessionRecorder {
             finish(endedAt: o.lastPlayingAt)
         }
         if open == nil {
-            open = Open(startedAt: now, lastPlayingAt: now)
+            var fresh = Open(startedAt: now, lastPlayingAt: now)
+            fresh.bytesWiFi = pendingWiFi
+            fresh.bytesCellular = pendingCellular
+            pendingWiFi = 0
+            pendingCellular = 0
+            open = fresh
         }
         // Gaps (pause, buffering, backgrounding) are not watch time.
         if delta > 0, delta <= Self.maxTickGap, var o = open {
@@ -120,6 +133,19 @@ final class WatchSessionRecorder {
         finish()
         let after = store.streak()
         if !wasDone && after.todayDone { onStreakExtended?(after.current) }
+    }
+
+    /// Network bytes loaded for the playing item since the last call (streams only), split by network type.
+    func addBytes(_ bytes: Int64, cellular: Bool) {
+        guard bytes > 0, context != nil else { return }
+        if var o = open {
+            if cellular { o.bytesCellular += bytes } else { o.bytesWiFi += bytes }
+            open = o
+        } else if cellular {
+            pendingCellular += bytes
+        } else {
+            pendingWiFi += bytes
+        }
     }
 
     /// Media seconds skipped by an intro / outro / recap skip.
@@ -163,7 +189,9 @@ final class WatchSessionRecorder {
             completed: endedNaturally || maxFraction >= Self.completedFraction,
             skippedSeconds: o.skippedSeconds,
             wasOffline: c.offline,
-            deviceID: store.deviceID
+            deviceID: store.deviceID,
+            bytesWiFi: c.offline ? nil : o.bytesWiFi,
+            bytesCellular: c.offline ? nil : o.bytesCellular
         )
         store.record(session)
     }

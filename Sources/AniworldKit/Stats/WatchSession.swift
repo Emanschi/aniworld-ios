@@ -25,12 +25,17 @@ public struct WatchSession: Codable, Hashable, Identifiable, Sendable {
     /// Played from a download.
     public var wasOffline: Bool
     public var deviceID: String
+    /// Bytes loaded over Wi-Fi / Ethernet while streaming this session (nil = not measured, old data).
+    public var bytesWiFi: Int64?
+    /// Bytes loaded over mobile data (or another metered connection) while streaming this session.
+    public var bytesCellular: Int64?
 
     public init(id: String = UUID().uuidString, seriesSlug: String, seriesTitle: String, coverURL: URL? = nil,
                 season: Int, episode: Int, language: StreamLanguage? = nil, hoster: String = "",
                 startedAt: Date, endedAt: Date, watchedSeconds: Double, playbackRate: Double = 1,
                 episodeDuration: Double = 0, completed: Bool = false, skippedSeconds: Double = 0,
-                wasOffline: Bool = false, deviceID: String = "") {
+                wasOffline: Bool = false, deviceID: String = "",
+                bytesWiFi: Int64? = nil, bytesCellular: Int64? = nil) {
         self.id = id
         self.seriesSlug = seriesSlug
         self.seriesTitle = seriesTitle
@@ -48,6 +53,8 @@ public struct WatchSession: Codable, Hashable, Identifiable, Sendable {
         self.skippedSeconds = skippedSeconds
         self.wasOffline = wasOffline
         self.deviceID = deviceID
+        self.bytesWiFi = bytesWiFi
+        self.bytesCellular = bytesCellular
     }
 
     /// Identifies the episode independent of the session ("slug-s1e3").
@@ -59,6 +66,7 @@ public struct WatchSession: Codable, Hashable, Identifiable, Sendable {
         case language = "lang", startedAt = "start", endedAt = "end", watchedSeconds = "watched"
         case playbackRate = "rate", episodeDuration = "dur", completed = "done", skippedSeconds = "skipped"
         case wasOffline = "offline", deviceID = "device"
+        case bytesWiFi = "bw", bytesCellular = "bc"
     }
 
     /// Tolerant decoding: only the identifying fields are required.
@@ -81,6 +89,51 @@ public struct WatchSession: Codable, Hashable, Identifiable, Sendable {
         skippedSeconds = try c.decodeIfPresent(Double.self, forKey: .skippedSeconds) ?? 0
         wasOffline = try c.decodeIfPresent(Bool.self, forKey: .wasOffline) ?? false
         deviceID = try c.decodeIfPresent(String.self, forKey: .deviceID) ?? ""
+        bytesWiFi = try c.decodeIfPresent(Int64.self, forKey: .bytesWiFi)
+        bytesCellular = try c.decodeIfPresent(Int64.self, forKey: .bytesCellular)
+    }
+
+    /// Measured data volume of this session (0 when nothing was measured).
+    public var totalBytes: Int64 { (bytesWiFi ?? 0) + (bytesCellular ?? 0) }
+}
+
+/// Data volume of downloads for one day on one device (downloads are not watch sessions).
+/// The counters only grow, so on a merge the entry with the larger total wins.
+public struct DataUsageEntry: Codable, Hashable, Identifiable, Sendable {
+    /// "<deviceID>-dl-<day>"; one entry per device and day.
+    public var id: String
+    /// Start of the day the bytes were loaded.
+    public var day: Date
+    public var wifiBytes: Int64
+    public var cellularBytes: Int64
+    public var deviceID: String
+    /// Last change; used for the statistics reset and retention.
+    public var updatedAt: Date
+
+    public init(id: String, day: Date, wifiBytes: Int64 = 0, cellularBytes: Int64 = 0,
+                deviceID: String = "", updatedAt: Date) {
+        self.id = id
+        self.day = day
+        self.wifiBytes = wifiBytes
+        self.cellularBytes = cellularBytes
+        self.deviceID = deviceID
+        self.updatedAt = updatedAt
+    }
+
+    public var totalBytes: Int64 { wifiBytes + cellularBytes }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, day, deviceID = "device", wifiBytes = "bw", cellularBytes = "bc", updatedAt = "upd"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        day = try c.decode(Date.self, forKey: .day)
+        wifiBytes = try c.decodeIfPresent(Int64.self, forKey: .wifiBytes) ?? 0
+        cellularBytes = try c.decodeIfPresent(Int64.self, forKey: .cellularBytes) ?? 0
+        deviceID = try c.decodeIfPresent(String.self, forKey: .deviceID) ?? ""
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? day
     }
 }
 
@@ -104,11 +157,25 @@ public struct StatsState: Codable, Hashable, Sendable {
     public var seriesMeta: [String: SeriesMeta]
     /// Time of the last "Statistik zurücksetzen"; sessions that ended at or before it are dropped.
     public var resetAt: Date?
+    /// Download data volume per device and day (absent in files written by older versions).
+    public var dataUsage: [DataUsageEntry]
 
-    public init(sessions: [WatchSession] = [], seriesMeta: [String: SeriesMeta] = [:], resetAt: Date? = nil) {
+    public init(sessions: [WatchSession] = [], seriesMeta: [String: SeriesMeta] = [:], resetAt: Date? = nil,
+                dataUsage: [DataUsageEntry] = []) {
         self.sessions = sessions
         self.seriesMeta = seriesMeta
         self.resetAt = resetAt
+        self.dataUsage = dataUsage
+    }
+
+    private enum CodingKeys: String, CodingKey { case sessions, seriesMeta, resetAt, dataUsage }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = try c.decodeIfPresent([WatchSession].self, forKey: .sessions) ?? []
+        seriesMeta = try c.decodeIfPresent([String: SeriesMeta].self, forKey: .seriesMeta) ?? [:]
+        resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
+        dataUsage = try c.decodeIfPresent([DataUsageEntry].self, forKey: .dataUsage) ?? []
     }
 }
 
@@ -118,7 +185,9 @@ public struct StatsState: Codable, Hashable, Sendable {
 ///   a deterministic tie-break), so the result does not depend on the order of the inputs;
 /// - `resetAt`: the newest reset wins and every session that ended at or before it is dropped;
 /// - sessions older than `retention` are dropped;
-/// - series meta: per slug the newer `updatedAt` wins.
+/// - series meta: per slug the newer `updatedAt` wins;
+/// - data usage: union by `id`; the entry with the larger total wins (counters only grow), entries
+///   last updated at or before the reset / older than `retention` are dropped.
 public enum StatsMerge {
     public static let retention: TimeInterval = 730 * 24 * 3600
 
@@ -154,7 +223,28 @@ public enum StatsMerge {
                 }
             }
         }
-        return StatsState(sessions: sessions, seriesMeta: meta, resetAt: reset)
+
+        var usage: [String: DataUsageEntry] = [:]
+        for state in states {
+            for entry in state.dataUsage where entry.updatedAt > floor {
+                if let current = usage[entry.id] {
+                    if isBetter(entry, than: current) { usage[entry.id] = entry }
+                } else {
+                    usage[entry.id] = entry
+                }
+            }
+        }
+        let dataUsage: [DataUsageEntry] = usage.values.sorted { (a: DataUsageEntry, b: DataUsageEntry) -> Bool in
+            a.day != b.day ? a.day < b.day : a.id < b.id
+        }
+        return StatsState(sessions: sessions, seriesMeta: meta, resetAt: reset, dataUsage: dataUsage)
+    }
+
+    private static func isBetter(_ a: DataUsageEntry, than b: DataUsageEntry) -> Bool {
+        if a.totalBytes != b.totalBytes { return a.totalBytes > b.totalBytes }
+        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
+        if a.wifiBytes != b.wifiBytes { return a.wifiBytes > b.wifiBytes }
+        return a.deviceID > b.deviceID
     }
 
     private static func isBetter(_ a: WatchSession, than b: WatchSession) -> Bool {
@@ -162,6 +252,7 @@ public enum StatsMerge {
         if a.watchedSeconds != b.watchedSeconds { return a.watchedSeconds > b.watchedSeconds }
         if a.skippedSeconds != b.skippedSeconds { return a.skippedSeconds > b.skippedSeconds }
         if a.completed != b.completed { return a.completed }
+        if a.totalBytes != b.totalBytes { return a.totalBytes > b.totalBytes }
         return a.deviceID > b.deviceID
     }
 }

@@ -115,6 +115,8 @@ final class PlayerViewModel {
     @ObservationIgnored private var readyForSaving = false
     @ObservationIgnored private var pendingStart: Double = 0
     @ObservationIgnored private var tickCount = 0
+    /// Sum of `numberOfBytesTransferred` of the current item's access log at the last sample.
+    @ObservationIgnored private var lastLoggedBytes: Int64 = 0
     /// Watched fraction (0...1) of the current episode at the last progress save.
     @ObservationIgnored private var lastWatchedFraction: Double = 0
     private static let watchedThreshold = 0.9
@@ -161,6 +163,9 @@ final class PlayerViewModel {
             self.recorder = recorder
         }
 
+        CastStreamProxy.shared.onUpstreamBytes = { [weak self] bytes in
+            Task { @MainActor in self?.noteCastBytes(bytes) }
+        }
         cast.onStatus = { [weak self] status in self?.castStatusChanged(status) }
         cast.onFinished = { [weak self] in self?.castDidFinish() }
         cast.onEnded = { [weak self] last in self?.castDidEnd(at: last) }
@@ -196,6 +201,7 @@ final class PlayerViewModel {
         guard !isShutdown else { return }
         saveProgress()
         library?.flush()
+        sampleDataUsage()
         recorder?.clear()
         isShutdown = true
         generation += 1
@@ -354,6 +360,8 @@ final class PlayerViewModel {
 
     private func attach(stream: ResolvedStream, language: StreamLanguage?, start: Double, gen: Int,
                         offline: Bool = false) {
+        sampleDataUsage()
+        lastLoggedBytes = 0
         removeItemObservers()
         recorder?.prepare(WatchSessionRecorder.Context(
             series: series, episode: episode, language: language ?? stream.language,
@@ -584,6 +592,7 @@ final class PlayerViewModel {
         }
         lastTickSeconds = s
         updateBuffering()
+        if !fromCast, tickCount % 4 == 0 { sampleDataUsage() }
 
         let currentPos = s.isFinite ? s : position
         if fromCast {
@@ -746,6 +755,7 @@ final class PlayerViewModel {
     }
 
     private func switchEpisode(to next: EpisodeRef, episodes: [EpisodeRef], startAt: Double?) {
+        sampleDataUsage()
         recorder?.clear()
         countdownTask?.cancel()
         countdown = nil
@@ -940,8 +950,32 @@ final class PlayerViewModel {
 
     // MARK: Statistics
 
+    /// Reads the bytes AVPlayer loaded for the current item (access log) since the last call and hands the
+    /// delta to the recorder, attributed to the network type of this moment. The log is cumulative per
+    /// event and old events can drop out, so a falling total is treated as a rollover (delta 0).
+    /// Offline playback and casting (the TV loads through the proxy, see `noteCastBytes`) count nothing.
+    private func sampleDataUsage() {
+        guard !isOfflinePlayback, !cast.isActive, let item = player.currentItem,
+              let events = item.accessLog()?.events else { return }
+        var total: Int64 = 0
+        for event in events where event.numberOfBytesTransferred > 0 {
+            total += event.numberOfBytesTransferred
+        }
+        let delta: Int64 = total - lastLoggedBytes
+        lastLoggedBytes = total
+        guard delta > 0 else { return }
+        recorder?.addBytes(delta, cellular: network?.usesMobileData == true)
+    }
+
+    /// Bytes the phone fetched for the TV through the cast proxy.
+    private func noteCastBytes(_ bytes: Int) {
+        guard !isShutdown, cast.isActive else { return }
+        recorder?.addBytes(Int64(bytes), cellular: network?.usesMobileData == true)
+    }
+
     /// Ends the running watch session (app in the background) and writes the statistics to disk.
     func flushStats() {
+        sampleDataUsage()
         recorder?.finish()
         stats?.flush()
     }
