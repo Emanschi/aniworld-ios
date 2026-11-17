@@ -206,6 +206,7 @@ extension View {
             .environment(env.watcher)
             .environment(env.stats)
             .environment(env.streakReminders)
+            .environment(env.network)
             .environment(\.aniworld, env.service)
             .preferredColorScheme(.dark)
     }
