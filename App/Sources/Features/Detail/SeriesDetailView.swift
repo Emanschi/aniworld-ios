@@ -506,7 +506,8 @@ struct SeriesDetailView: View {
             }
         }
         guard !fresh.isEmpty else { return }
-        if network.isCellular {
+        // Mobile data includes a personal hotspot (Wi-Fi marked as expensive by iOS).
+        if network.usesMobileData {
             if settings.downloadOnlyOnWiFi {
                 startDownload(fresh, onlyOnWiFi: false)
                 wifiOnlyHintShown = true
