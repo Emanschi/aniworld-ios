@@ -181,6 +181,85 @@ final class WatchStatsTests: XCTestCase {
         XCTAssertEqual(WatchStatsCalculator.funComparison(totalSeconds: 6 * 3600), "Das entspricht 3 Filmen à 2 Stunden.")
         XCTAssertEqual(WatchStatsCalculator.funComparison(totalSeconds: 30 * 3600)?.contains("Herr-der-Ringe"), true)
     }
+
+    // MARK: Data usage
+
+    func testOldSessionAndStateWithoutBytesDecode() throws {
+        let s = try JSONDecoder().decode(WatchSession.self, from: Data(#"{"id":"x","slug":"a","start":1000}"#.utf8))
+        XCTAssertNil(s.bytesWiFi)
+        XCTAssertEqual(s.totalBytes, 0)
+        let state = try JSONDecoder().decode(StatsState.self, from: Data(#"{"sessions":[]}"#.utf8))
+        XCTAssertTrue(state.dataUsage.isEmpty)
+        var withBytes = session("b", start: date(2026, 11, 1))
+        withBytes.bytesWiFi = 5
+        withBytes.bytesCellular = 7
+        let back = try JSONDecoder().decode(WatchSession.self, from: JSONEncoder().encode(withBytes))
+        XCTAssertEqual(back, withBytes)
+    }
+
+    func testDataUsageMergeKeepsLargerCounterAndHonoursReset() {
+        let now = date(2026, 11, 5)
+        let day = date(2026, 11, 4, 0)
+        let small = DataUsageEntry(id: "A-dl-1", day: day, wifiBytes: 100, deviceID: "A", updatedAt: date(2026, 11, 4, 10))
+        let big = DataUsageEntry(id: "A-dl-1", day: day, wifiBytes: 100, cellularBytes: 50, deviceID: "A",
+                                 updatedAt: date(2026, 11, 4, 11))
+        let other = DataUsageEntry(id: "B-dl-1", day: day, wifiBytes: 10, deviceID: "B", updatedAt: date(2026, 11, 4, 9))
+        let merged = StatsMerge.merge([StatsState(dataUsage: [small, other]), StatsState(dataUsage: [big])], now: now)
+        XCTAssertEqual(merged.dataUsage.map { $0.id }, ["A-dl-1", "B-dl-1"])
+        XCTAssertEqual(merged.dataUsage.first?.totalBytes, 150)
+        let swapped = StatsMerge.merge([StatsState(dataUsage: [big]), StatsState(dataUsage: [other, small])], now: now)
+        XCTAssertEqual(swapped, merged)
+        let reset = StatsMerge.merge([merged, StatsState(resetAt: date(2026, 11, 4, 10, 30))], now: now)
+        XCTAssertEqual(reset.dataUsage.map { $0.id }, ["A-dl-1"])
+    }
+
+    func testDataUsageTotals() {
+        var a = session("a", start: date(2026, 11, 2), minutes: 30)
+        a.bytesWiFi = 900_000_000
+        a.bytesCellular = 100_000_000
+        var b = session("b", slug: "bleach", start: date(2026, 11, 3), minutes: 30)
+        b.bytesCellular = 1_000_000_000
+        let legacy = session("c", slug: "old", start: date(2026, 11, 4)) // not measured
+        var offline = session("d", start: date(2026, 11, 5), offline: true)
+        offline.bytesWiFi = 999
+        let outside = DataUsageEntry(id: "A-dl-0", day: date(2026, 10, 30, 0), wifiBytes: 777, deviceID: "A",
+                                     updatedAt: date(2026, 10, 30))
+        let dl = DataUsageEntry(id: "A-dl-1", day: date(2026, 11, 6, 0), wifiBytes: 3_000_000_000,
+                                cellularBytes: 1_000_000_000, deviceID: "A", updatedAt: date(2026, 11, 6))
+        let interval = StatsPeriod.month(year: 2026, month: 11).interval(calendar: calendar)
+        let stats = WatchStatsCalculator(sessions: [a, b, legacy, offline], interval: interval, calendar: calendar,
+                                         dataUsage: [outside, dl]).compute()
+        let u = stats.dataUsage
+        XCTAssertEqual(u.streamingBytes, 2_000_000_000)
+        XCTAssertEqual(u.downloadBytes, 4_000_000_000)
+        XCTAssertEqual(u.wifiBytes, 3_900_000_000)
+        XCTAssertEqual(u.cellularBytes, 2_100_000_000)
+        XCTAssertEqual(u.totalBytes, 6_000_000_000)
+        XCTAssertEqual(u.wifiShare, 0.65, accuracy: 0.0001)
+        XCTAssertEqual(u.cellularShare, 0.35, accuracy: 0.0001)
+        XCTAssertEqual(u.measuredEpisodes, 2)
+        XCTAssertEqual(u.bytesPerEpisode, 1_000_000_000)
+        XCTAssertEqual(u.bytesPerHour, 2_000_000_000)
+        XCTAssertEqual(u.funFact, "Das ist etwa eine volle DVD.")
+    }
+
+    func testDataUsageWithoutSessionsStillCountsDownloads() {
+        let dl = DataUsageEntry(id: "A-dl-1", day: date(2026, 11, 6, 0), wifiBytes: 1000, deviceID: "A",
+                                updatedAt: date(2026, 11, 6))
+        let interval = StatsPeriod.month(year: 2026, month: 11).interval(calendar: calendar)
+        let stats = WatchStatsCalculator(sessions: [], interval: interval, calendar: calendar, dataUsage: [dl]).compute()
+        XCTAssertFalse(stats.hasData)
+        XCTAssertEqual(stats.dataUsage.totalBytes, 1000)
+        XCTAssertNil(stats.dataUsage.bytesPerHour)
+        XCTAssertNil(stats.dataUsage.funFact)
+    }
+
+    func testDataFunFacts() {
+        XCTAssertEqual(WatchStatsCalculator.dataFunFact(totalBytes: 10_000_000_000), "Das sind etwa 2 volle DVDs.")
+        XCTAssertEqual(WatchStatsCalculator.dataFunFact(totalBytes: 300_000_000),
+                       "Das ist so viel wie 5 Stunden Musik-Streaming.")
+        XCTAssertNil(WatchStatsCalculator.dataFunFact(totalBytes: 1_000))
+    }
 }
 
 final class WatchStatsMetaResetTests: XCTestCase {

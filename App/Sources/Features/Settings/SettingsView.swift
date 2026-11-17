@@ -13,6 +13,7 @@ struct SettingsView: View {
             Form {
                 PrioritySection()
                 PlaybackSection()
+                MobileDataSection()
                 CastSettingsSection()
                 DownloadsSettingsSection()
                 SyncSection()
@@ -69,6 +70,7 @@ struct SettingsView: View {
 private struct SyncSection: View {
     @Environment(LibrarySyncService.self) private var sync
     @State private var showPicker = false
+    @State private var confirmRestore = false
 
     private func relative(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
@@ -116,6 +118,16 @@ private struct SyncSection: View {
                 Button("Jetzt synchronisieren") { sync.syncNow() }
                     .disabled(sync.isSyncing)
                 Button("Synchronisierung deaktivieren", role: .destructive) { sync.disable() }
+            }
+            if let backupAt = sync.lastBackupAt {
+                Button("Letzte Sicherung wiederherstellen (\(relative(backupAt)))") { confirmRestore = true }
+                    .confirmationDialog("Letzte Sicherung wiederherstellen?", isPresented: $confirmRestore,
+                                        titleVisibility: .visible) {
+                        Button("Wiederherstellen", role: .destructive) { _ = sync.restoreLastBackup() }
+                        Button("Abbrechen", role: .cancel) {}
+                    } message: {
+                        Text("Favoriten, Verlauf, Fortschritt und Intro-Zeiten dieses Geräts werden auf den Stand der Sicherung gesetzt und gelten danach auch für deine anderen Geräte. Der jetzige Stand wird vorher gesichert.")
+                    }
             }
         } header: {
             Text("Synchronisierung")
@@ -210,6 +222,36 @@ private struct PlaybackSection: View {
             Text("Wiedergabe")
         } footer: {
             Text("Blendet bei Intro und Outro einen Sprung-Button ein. Die Zeiten legst du selbst fest – im Player für eine Folge oder die ganze Staffel („Eigene Intro-Zeiten“); sie bleiben auf deinem Gerät bzw. in deinem iCloud-Sync. Ohne eigene Zeiten wird der manuelle Sprung verwendet. „Streams prüfen“ testet vor dem Start, ob die Videosegmente erreichbar sind.")
+        }
+    }
+}
+
+// MARK: Mobile Daten
+
+private struct MobileDataSection: View {
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            Picker("Streaming im WLAN", selection: $settings.streamQualityWiFi) {
+                ForEach(StreamQuality.allCases) { quality in
+                    Text("\(quality.title) · \(quality.dataPerHourText)").tag(quality)
+                }
+            }
+            Picker("Streaming über mobile Daten", selection: $settings.streamQualityCellular) {
+                ForEach(StreamQuality.allCases) { quality in
+                    Text("\(quality.title) · \(quality.dataPerHourText)").tag(quality)
+                }
+            }
+            Toggle("Warnen bei mobilen Daten", isOn: $settings.warnOnCellularStreaming)
+                .tint(Theme.accent)
+            Toggle("Nur im WLAN herunterladen", isOn: $settings.downloadOnlyOnWiFi)
+                .tint(Theme.accent)
+        } header: {
+            Text("Mobile Daten")
+        } footer: {
+            Text("Begrenzt die Streaming-Qualität, getrennt für WLAN und mobile Daten; die Umschaltung greift auch während der Wiedergabe. Das Limit wirkt nur bei Streams mit mehreren Qualitätsstufen (HLS). Bei einigen Hostern gibt es nur eine Qualität (MP4), dort lässt sich der Datenverbrauch nicht begrenzen. Die GB-Angaben sind Richtwerte. Ist „Nur im WLAN herunterladen“ aus, fragt die App vor Downloads über mobile Daten nach und bietet „Später im WLAN laden“ an.")
         }
     }
 }
@@ -394,9 +436,6 @@ private struct DownloadsSettingsSection: View {
             }
 
             Toggle("Gesehene Folgen automatisch löschen", isOn: $settings.autoDeleteWatchedDownloads)
-                .tint(Theme.accent)
-
-            Toggle("Nur im WLAN herunterladen", isOn: $settings.downloadOnlyOnWiFi)
                 .tint(Theme.accent)
 
             HStack {

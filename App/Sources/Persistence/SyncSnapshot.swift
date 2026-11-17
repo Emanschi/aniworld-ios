@@ -53,6 +53,10 @@ struct SyncSnapshot: Codable, Sendable {
     var statsSessions: [WatchSession]
     var statsSeriesMeta: [String: SeriesMeta]
     var statsResetAt: Date?
+    /// Optional addition: this device kept its own statistics against a newer reset (see `StatsState`).
+    var statsRestoredAt: Date?
+    /// Optional addition: download data volume per day recorded on this device.
+    var statsDataUsage: [DataUsageEntry]
 
     init(deviceID: String, deviceName: String, writtenAt: Date = Date(), state: LibraryState,
          stats: StatsState = StatsState()) {
@@ -73,10 +77,13 @@ struct SyncSnapshot: Codable, Sendable {
         statsSessions = stats.sessions
         statsSeriesMeta = stats.seriesMeta
         statsResetAt = stats.resetAt
+        statsRestoredAt = stats.restoredAt
+        statsDataUsage = stats.dataUsage
     }
 
     var statsState: StatsState {
-        StatsState(sessions: statsSessions, seriesMeta: statsSeriesMeta, resetAt: statsResetAt)
+        StatsState(sessions: statsSessions, seriesMeta: statsSeriesMeta, resetAt: statsResetAt,
+                   dataUsage: statsDataUsage, restoredAt: statsRestoredAt)
     }
 
     var state: LibraryState {
@@ -91,7 +98,7 @@ struct SyncSnapshot: Codable, Sendable {
         case schemaVersion, deviceID, deviceName, writtenAt, favorites, favoriteTombstones
         case history, historyTombstones, historyClearedAt, progress, languages, resetAt
         case customSkips, customSkipTombstones
-        case statsSessions, statsSeriesMeta, statsResetAt
+        case statsSessions, statsSeriesMeta, statsResetAt, statsRestoredAt, statsDataUsage
     }
 
     init(from decoder: Decoder) throws {
@@ -113,5 +120,7 @@ struct SyncSnapshot: Codable, Sendable {
         statsSessions = try c.decodeIfPresent([WatchSession].self, forKey: .statsSessions) ?? []
         statsSeriesMeta = try c.decodeIfPresent([String: SeriesMeta].self, forKey: .statsSeriesMeta) ?? [:]
         statsResetAt = try c.decodeIfPresent(Date.self, forKey: .statsResetAt)
+        statsRestoredAt = try c.decodeIfPresent(Date.self, forKey: .statsRestoredAt)
+        statsDataUsage = try c.decodeIfPresent([DataUsageEntry].self, forKey: .statsDataUsage) ?? []
     }
 }

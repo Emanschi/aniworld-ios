@@ -103,7 +103,8 @@ final class DownloadNetworkWatcher: @unchecked Sendable {
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            let onWiFi = path.status == .satisfied
+            // A personal hotspot is Wi-Fi marked as expensive: it does not count as "WLAN" here.
+            let onWiFi = path.status == .satisfied && !path.isExpensive
                 && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
             self.lock.lock()
             let changed = self._wifi != onWiFi
@@ -152,9 +153,10 @@ final class DownloadSessionDelegate: NSObject, AVAssetDownloadDelegate, URLSessi
     // File progress
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        let m = manager
+        if bytesWritten > 0 { Task { @MainActor in m?.noteDownloadBytes(bytesWritten) } }
         guard let id = downloadTask.taskDescription, totalBytesExpectedToWrite > 0 else { return }
         let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        let m = manager
         Task { @MainActor in m?.updateProgress(id: id, fraction: fraction) }
     }
 
@@ -233,6 +235,8 @@ final class DownloadManager {
     @ObservationIgnored private let service: AniworldService
     @ObservationIgnored private let settings: SettingsStore
     @ObservationIgnored private let library: LibraryStore?
+    @ObservationIgnored private let stats: WatchStatsStore?
+    @ObservationIgnored private let network: NetworkStatus?
     @ObservationIgnored private let sessionDelegate = DownloadSessionDelegate()
     @ObservationIgnored private var hlsSession: AVAssetDownloadURLSession?
     @ObservationIgnored private var fileSession: URLSession?
@@ -252,10 +256,13 @@ final class DownloadManager {
     /// progress and are resumed when Wi-Fi returns (or the setting is switched off).
     private(set) var suspendedForWiFi: Set<String> = []
 
-    init(service: AniworldService, settings: SettingsStore, library: LibraryStore? = nil) {
+    init(service: AniworldService, settings: SettingsStore, library: LibraryStore? = nil,
+         stats: WatchStatsStore? = nil, network: NetworkStatus? = nil) {
         self.service = service
         self.settings = settings
         self.library = library
+        self.stats = stats
+        self.network = network
         loadIndex()
         sessionDelegate.manager = self
 
@@ -295,6 +302,16 @@ final class DownloadManager {
         settings.downloadOnlyOnWiFi && !wifiConnected
     }
 
+    /// True while this queued job cannot start because it needs Wi-Fi (global setting or "Später im WLAN laden").
+    func isHeldForWiFi(_ job: DownloadJob) -> Bool {
+        job.status == .queued && (isWaitingForWiFi || (job.waitsForWiFi == true && !wifiConnected))
+    }
+
+    /// The job must not use mobile data right now.
+    private func mustWaitForWiFi(_ job: DownloadJob) -> Bool {
+        !wifiConnected && (settings.downloadOnlyOnWiFi || job.waitsForWiFi == true)
+    }
+
     var totalBytes: Int64 { records.reduce(Int64(0)) { $0 + $1.sizeBytes } }
 
     var activeJobs: [DownloadJob] {
@@ -326,7 +343,9 @@ final class DownloadManager {
 
     // MARK: Commands
 
-    func download(series: SeriesSummary, episodes: [EpisodeRef], language: StreamLanguage?) {
+    /// `onlyOnWiFi`: the jobs wait for Wi-Fi even if "Nur im WLAN herunterladen" is off ("Später im WLAN laden").
+    func download(series: SeriesSummary, episodes: [EpisodeRef], language: StreamLanguage?,
+                  onlyOnWiFi: Bool = false) {
         let base = Date()
         var index = 0
         for episode in episodes {
@@ -335,7 +354,8 @@ final class DownloadManager {
                 let job = DownloadJob(
                     id: episode.id, series: series, episode: episode, language: language,
                     status: .queued, progress: 0, currentHoster: nil, triedHosters: [],
-                    errorMessage: nil, addedAt: base.addingTimeInterval(Double(index) * 0.001))
+                    errorMessage: nil, addedAt: base.addingTimeInterval(Double(index) * 0.001),
+                    waitsForWiFi: onlyOnWiFi ? true : nil)
                 jobs[episode.id] = job
                 index += 1
             default:
@@ -425,16 +445,19 @@ final class DownloadManager {
     /// job is requeued. Plain file downloads started with a Wi-Fi-only request pause on their own.
     private func enforceNetworkPolicy() {
         guard restored else { return }
-        if isWaitingForWiFi {
-            let ids = jobs.values.filter {
-                $0.status == .active && $0.isCompressing != true
-                    && !wifiOnlyTasks.contains($0.id) && !suspendedForWiFi.contains($0.id)
-            }.map { $0.id }
-            guard !ids.isEmpty else { return }
-            Task { [weak self] in await self?.suspendForWiFi(ids) }
-        } else if !suspendedForWiFi.isEmpty {
-            let ids = suspendedForWiFi
-            Task { [weak self] in await self?.resumeAfterWiFi(ids) }
+        let toSuspend = jobs.values.filter {
+            $0.status == .active && $0.isCompressing != true
+                && !wifiOnlyTasks.contains($0.id) && !suspendedForWiFi.contains($0.id)
+                && mustWaitForWiFi($0)
+        }.map { $0.id }
+        if !toSuspend.isEmpty {
+            Task { [weak self] in await self?.suspendForWiFi(toSuspend) }
+        }
+        let toResume = suspendedForWiFi.filter { id in
+            jobs[id].map { !mustWaitForWiFi($0) } ?? true
+        }
+        if !toResume.isEmpty {
+            Task { [weak self] in await self?.resumeAfterWiFi(toResume) }
         }
     }
 
@@ -448,9 +471,9 @@ final class DownloadManager {
     private func suspendForWiFi(_ ids: [String]) async {
         let tasks = await allSessionTasks()
         // The situation may have changed while we were waiting for the task list.
-        guard isWaitingForWiFi else { return }
         for id in ids {
             guard let job = jobs[id], job.status == .active, job.isCompressing != true,
+                  mustWaitForWiFi(job),
                   !wifiOnlyTasks.contains(id), !suspendedForWiFi.contains(id) else { continue }
             let matching = tasks.filter { $0.taskDescription == id }
             if matching.isEmpty {
@@ -465,8 +488,8 @@ final class DownloadManager {
 
     private func resumeAfterWiFi(_ ids: Set<String>) async {
         let tasks = await allSessionTasks()
-        guard !isWaitingForWiFi else { return }
         for id in ids where suspendedForWiFi.contains(id) {
+            if let job = jobs[id], mustWaitForWiFi(job) { continue }
             for task in tasks where task.taskDescription == id { task.resume() }
             suspendedForWiFi.remove(id)
         }
@@ -491,7 +514,9 @@ final class DownloadManager {
         guard restored else { return }
         if isWaitingForWiFi { return }
         var running = jobs.values.filter { $0.status == .active }.count
-        let queued = jobs.values.filter { $0.status == .queued && !cancelling.contains($0.id) }
+        let queued = jobs.values.filter {
+            $0.status == .queued && !cancelling.contains($0.id) && !isHeldForWiFi($0)
+        }
             .sorted { $0.addedAt < $1.addedAt }
         for job in queued {
             if running >= Self.maxConcurrent { break }
@@ -552,8 +577,9 @@ final class DownloadManager {
             for (key, value) in stream.headers {
                 request.setValue(value, forHTTPHeaderField: key)
             }
-            let wifiOnly = settings.downloadOnlyOnWiFi
+            let wifiOnly = settings.downloadOnlyOnWiFi || job.waitsForWiFi == true
             request.allowsCellularAccess = !wifiOnly
+            request.allowsExpensiveNetworkAccess = !wifiOnly
             if wifiOnly { wifiOnlyTasks.insert(id) } else { wifiOnlyTasks.remove(id) }
             guard let session = fileSession else {
                 markFailed(id: id, message: "Download-Sitzung nicht verfügbar")
@@ -566,7 +592,8 @@ final class DownloadManager {
             wifiOnlyTasks.remove(id)
             let asset = AVURLAsset(url: stream.url, options: [
                 "AVURLAssetHTTPHeaderFieldsKey": stream.headers,
-                AVURLAssetAllowsCellularAccessKey: !settings.downloadOnlyOnWiFi
+                AVURLAssetAllowsCellularAccessKey: !(settings.downloadOnlyOnWiFi || job.waitsForWiFi == true),
+                AVURLAssetAllowsExpensiveNetworkAccessKey: !(settings.downloadOnlyOnWiFi || job.waitsForWiFi == true)
             ])
             guard let session = hlsSession,
                   let task = session.makeAssetDownloadTask(
@@ -595,6 +622,12 @@ final class DownloadManager {
     }
 
     // MARK: Callbacks from the session delegate
+
+    /// Statistics: bytes loaded by a download, attributed to the network type of this moment.
+    func noteDownloadBytes(_ bytes: Int64) {
+        let mobile: Bool = network?.usesMobileData ?? !DownloadNetworkWatcher.shared.isConnectedToWiFi
+        stats?.addDownloadBytes(bytes, cellular: mobile)
+    }
 
     func updateProgress(id: String, fraction: Double) {
         guard var job = jobs[id], job.status == .active else { return }
@@ -671,6 +704,8 @@ final class DownloadManager {
         Task { [weak self] in
             let size = await Task.detached(priority: .utility) { DownloadPaths.diskSize(of: location) }.value
             self?.setSize(size, id: id)
+            // File downloads are counted while they run; an HLS package only reports its final size.
+            if kind == .hls { self?.noteDownloadBytes(size) }
         }
     }
 
@@ -797,10 +832,10 @@ final class DownloadManager {
         pump()
         // Tasks that were suspended before the relaunch must not run on cellular (or are resumed again).
         enforceNetworkPolicy()
-        if !isWaitingForWiFi {
-            for task in all where task.taskDescription.map({ running.contains($0) }) == true {
-                task.resume()
-            }
+        for task in all {
+            guard let id = task.taskDescription, running.contains(id),
+                  let job = jobs[id], !mustWaitForWiFi(job) else { continue }
+            task.resume()
         }
     }
 

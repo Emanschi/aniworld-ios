@@ -37,6 +37,15 @@ enum StatsFormat {
         String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
     }
 
+    /// Data volume with decimal units like iOS shows them: "2,4 GB", "850 MB", "< 1 MB".
+    static func bytes(_ value: Int64) -> String {
+        let b = Double(max(value, 0))
+        if b >= 1e10 { return "\(Int((b / 1e9).rounded())) GB" }
+        if b >= 1e9 { return "\(decimal(b / 1e9)) GB" }
+        if b >= 1e6 { return "\(Int((b / 1e6).rounded())) MB" }
+        return b > 0 ? "< 1 MB" : "0 MB"
+    }
+
     static func count(_ n: Int, singular: String, plural: String) -> String {
         "\(n) \(n == 1 ? singular : plural)"
     }

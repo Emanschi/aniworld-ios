@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.5.3",
+    "date": "2026-11-17",
+    "notes": [
+      "Der Player stellt beim Schließen keine Helligkeit mehr zurück, die du zwischendurch selbst geändert hast (z. B. im Kontrollzentrum bei Bild-in-Bild).",
+      "Die Statistik speichert eine laufende Folge jetzt jede Minute zwischen – bei einem Absturz geht höchstens eine Minute verloren.",
+      "Neu: Unterscheiden sich die Daten dieses Geräts und iCloud so, dass beim Abgleich etwas entfernt oder zurückgesetzt würde, fragt die App dich jetzt: Dieses Gerät behalten, iCloud übernehmen oder Zusammenführen. Einzelne Änderungen von anderen Geräten (z. B. ein entfernter Favorit oder eine als ungesehen markierte Folge) werden weiterhin ohne Nachfrage übernommen; gefragt wird nur bei Zurücksetzen, Leeren, vielen Änderungen auf einmal oder falscher Uhrzeit. Vorher wurde einfach überschrieben.",
+      "Neu: Vor jeder solchen Entscheidung legt die App eine Sicherung an (die letzten 5 bleiben erhalten). In den Einstellungen unter „Synchronisierung“ kannst du die letzte Sicherung wiederherstellen.",
+      "Neu: Beim Streamen über mobile Daten warnt dich der Player einmal pro App-Start vor dem hohen Datenverbrauch und zeigt den geschätzten Verbrauch der Folge. Dort kannst du auch gleich die Qualität senken.",
+      "Neu: Streaming-Qualität getrennt für WLAN und mobile Daten (Automatisch, Hoch, Mittel, Datensparend) in den Einstellungen unter „Mobile Daten“, inklusive ungefährem Verbrauch pro Stunde. Gilt auch während der Wiedergabe, aber nur bei Streams mit mehreren Qualitätsstufen.",
+      "Neu: Startest du einen Download über mobile Daten, fragt die App nach. Mit „Später im WLAN laden“ startet er automatisch, sobald du wieder im WLAN bist.",
+      "Neu: In den Statistiken zeigt die Karte „Datenverbrauch“, wie viel Daten du gestreamt und heruntergeladen hast, aufgeteilt in WLAN und mobile Daten. Gemessen wird ab dieser Version.",
+      "Ein persönlicher Hotspot zählt jetzt überall als mobile Daten: Downloads fragen nach und „Später im WLAN laden“ wartet auf ein echtes WLAN.",
+      "Gibt es eine neue Version, fragt die App jetzt bei jedem Start per Popup nach – mit „Zum Release“ oder „Später aktualisieren“. Ohne Update erscheint nichts."
+    ]
+  },
+  {
     "version": "0.5.2",
     "date": "2026-11-14",
     "notes": [

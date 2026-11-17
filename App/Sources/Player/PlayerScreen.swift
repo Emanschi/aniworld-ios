@@ -13,6 +13,7 @@ struct PlayerScreen: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(DownloadManager.self) private var downloads
     @Environment(WatchStatsStore.self) private var stats
+    @Environment(NetworkStatus.self) private var network
     @Environment(\.aniworld) private var service
     @Environment(\.scenePhase) private var scenePhase
 
@@ -37,7 +38,7 @@ struct PlayerScreen: View {
             guard viewModel == nil else { return }
             let vm = PlayerViewModel(session: session)
             vm.attach(service: service, library: library, settings: settings, coordinator: playback,
-                      downloads: downloads, stats: stats)
+                      downloads: downloads, stats: stats, network: network)
             viewModel = vm
             vm.start()
         }
@@ -46,9 +47,12 @@ struct PlayerScreen: View {
             PlayerOrientation.enterPlayer()
         }
         .onDisappear {
-            if let orig = originalBrightness {
+            // Give the original brightness back, unless the user changed it outside the player meanwhile
+            // (e.g. in Control Center during Picture in Picture).
+            if let orig = originalBrightness, PlayerBrightness.isStillOurs {
                 UIScreen.main.brightness = orig
             }
+            PlayerBrightness.lastSet = nil
             viewModel?.shutdown()
             PlayerOrientation.leavePlayer()
         }
@@ -64,6 +68,13 @@ struct PlayerScreen: View {
         .onChange(of: playback.isMinimized) { _, minimized in
             if minimized { PlayerOrientation.leavePlayer() } else { PlayerOrientation.enterPlayer() }
             updateBrightness()
+        }
+        // Quality limit follows the connection type and the settings, also during playback.
+        .onChange(of: viewModel?.effectiveStreamQuality) { _, _ in
+            viewModel?.applyStreamQuality()
+        }
+        .onChange(of: network.usesMobileData) { _, _ in
+            viewModel?.applyStreamQuality()
         }
         // The PiP button keeps the app active, so the scene phase alone does not cover it.
         .onChange(of: viewModel?.isPictureInPictureActive ?? false) { _, _ in
@@ -81,12 +92,31 @@ struct PlayerScreen: View {
             let current = UIScreen.main.brightness
             if abs(current - orig) > 0.001 {
                 playerBrightness = current
-                UIScreen.main.brightness = orig
+                PlayerBrightness.set(orig)
             }
         } else if let custom = playerBrightness {
-            UIScreen.main.brightness = custom
+            // Only re-apply the player's value if nobody changed the brightness while we were away.
+            if PlayerBrightness.isStillOurs { PlayerBrightness.set(custom) }
             playerBrightness = nil
         }
+    }
+}
+
+/// Remembers the last brightness the player itself set, to tell it apart from changes by the user
+/// outside the player (Control Center, Settings).
+@MainActor
+enum PlayerBrightness {
+    static var lastSet: CGFloat?
+
+    static func set(_ value: CGFloat) {
+        UIScreen.main.brightness = value
+        lastSet = UIScreen.main.brightness
+    }
+
+    /// True when the player never changed the brightness or it is still at the player's last value.
+    static var isStillOurs: Bool {
+        guard let lastSet else { return true }
+        return abs(UIScreen.main.brightness - lastSet) < 0.02
     }
 }
 
@@ -201,7 +231,12 @@ private struct PlayerContentView: View {
                 .zIndex(9)
             }
             panelLayer
+            if vm.cellularWarningVisible {
+                CellularWarningCard(vm: vm)
+                    .zIndex(10)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: vm.cellularWarningVisible)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: vm.streakCelebration)
         .environment(\.colorScheme, .dark)
         .task(id: HideKey(token: activityToken, shown: controlsShown, allowed: autoHideAllowed)) {
@@ -411,7 +446,7 @@ private struct PlayerContentView: View {
 
         if isLeft {
             let target = min(max(baseBrightness + deltaFraction, 0), 1)
-            UIScreen.main.brightness = CGFloat(target)
+            PlayerBrightness.set(CGFloat(target))
             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                 hudState = PlayerHUDState(kind: .brightness, value: target)
             }
