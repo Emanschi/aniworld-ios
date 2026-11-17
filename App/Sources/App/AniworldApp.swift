@@ -71,16 +71,18 @@ struct AppEnvironment {
         let stats: WatchStatsStore = stats ?? WatchStatsStore()
         let library = LibraryStore()
         let settings = SettingsStore()
+        let network = NetworkStatus()
         return AppEnvironment(
             service: service, library: library, settings: settings,
             playback: PlaybackCoordinator(service: service, library: library, settings: settings),
             sync: LibrarySyncService(library: library, stats: stats),
-            downloads: DownloadManager(service: service, settings: settings, library: library),
+            downloads: DownloadManager(service: service, settings: settings, library: library,
+                                     stats: stats, network: network),
             watcher: EpisodeWatcher(service: service, library: library, settings: settings),
             stats: stats,
             widgets: WidgetSnapshotWriter(stats: stats, library: library),
             streakReminders: StreakReminderScheduler(stats: stats, settings: settings),
-            network: NetworkStatus()
+            network: network
         )
     }
 }

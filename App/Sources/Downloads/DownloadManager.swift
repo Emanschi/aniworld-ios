@@ -152,9 +152,10 @@ final class DownloadSessionDelegate: NSObject, AVAssetDownloadDelegate, URLSessi
     // File progress
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        let m = manager
+        if bytesWritten > 0 { Task { @MainActor in m?.noteDownloadBytes(bytesWritten) } }
         guard let id = downloadTask.taskDescription, totalBytesExpectedToWrite > 0 else { return }
         let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        let m = manager
         Task { @MainActor in m?.updateProgress(id: id, fraction: fraction) }
     }
 
@@ -233,6 +234,8 @@ final class DownloadManager {
     @ObservationIgnored private let service: AniworldService
     @ObservationIgnored private let settings: SettingsStore
     @ObservationIgnored private let library: LibraryStore?
+    @ObservationIgnored private let stats: WatchStatsStore?
+    @ObservationIgnored private let network: NetworkStatus?
     @ObservationIgnored private let sessionDelegate = DownloadSessionDelegate()
     @ObservationIgnored private var hlsSession: AVAssetDownloadURLSession?
     @ObservationIgnored private var fileSession: URLSession?
@@ -252,10 +255,13 @@ final class DownloadManager {
     /// progress and are resumed when Wi-Fi returns (or the setting is switched off).
     private(set) var suspendedForWiFi: Set<String> = []
 
-    init(service: AniworldService, settings: SettingsStore, library: LibraryStore? = nil) {
+    init(service: AniworldService, settings: SettingsStore, library: LibraryStore? = nil,
+         stats: WatchStatsStore? = nil, network: NetworkStatus? = nil) {
         self.service = service
         self.settings = settings
         self.library = library
+        self.stats = stats
+        self.network = network
         loadIndex()
         sessionDelegate.manager = self
 
@@ -614,6 +620,12 @@ final class DownloadManager {
 
     // MARK: Callbacks from the session delegate
 
+    /// Statistics: bytes loaded by a download, attributed to the network type of this moment.
+    func noteDownloadBytes(_ bytes: Int64) {
+        let mobile: Bool = network?.usesMobileData ?? !DownloadNetworkWatcher.shared.isConnectedToWiFi
+        stats?.addDownloadBytes(bytes, cellular: mobile)
+    }
+
     func updateProgress(id: String, fraction: Double) {
         guard var job = jobs[id], job.status == .active else { return }
         job.progress = max(0, min(1, fraction))
@@ -689,6 +701,8 @@ final class DownloadManager {
         Task { [weak self] in
             let size = await Task.detached(priority: .utility) { DownloadPaths.diskSize(of: location) }.value
             self?.setSize(size, id: id)
+            // File downloads are counted while they run; an HLS package only reports its final size.
+            if kind == .hls { self?.noteDownloadBytes(size) }
         }
     }
 
