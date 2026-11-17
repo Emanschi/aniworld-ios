@@ -51,6 +51,9 @@ struct RootView: View {
         }) {
             SyncOnboardingView()
         }
+        .sheet(item: conflictBinding) { (info: SyncConflictInfo) in
+            SyncConflictSheet(info: info)
+        }
         .alert(
             "Update verfügbar",
             isPresented: Binding<Bool>(
@@ -105,6 +108,7 @@ struct RootView: View {
             await updates.check()
         }
         .onChange(of: sync.showOnboarding) { _, _ in processDeferred() }
+        .onChange(of: sync.conflict == nil) { _, _ in processDeferred() }
         .onChange(of: playback.activeSession == nil) { _, _ in processDeferred() }
         .onChange(of: playback.isMinimized) { _, _ in processDeferred() }
         .onChange(of: patchNotes == nil) { _, _ in processDeferred() }
@@ -122,9 +126,18 @@ struct RootView: View {
         }
     }
 
+    /// Der Abgleich-Dialog wartet, solange Serien-/Statistik-Sheet oben liegen (zwei Sheets gleichzeitig
+    /// gehen nicht). Er lässt sich nur über seine Buttons schließen, deshalb ignoriert `set` alles.
+    private var conflictBinding: Binding<SyncConflictInfo?> {
+        Binding(
+            get: { (showStats || watcher.pendingOpenSeries != nil) ? nil : sync.conflict },
+            set: { _ in }
+        )
+    }
+
     /// True, solange ein Sheet von RootView oder der Player (nicht minimiert) im Vordergrund ist.
     private var isBlockingPresentation: Bool {
-        sync.showOnboarding || patchNotes != nil || watcher.pendingOpenSeries != nil || showStats
+        sync.showOnboarding || sync.conflict != nil || patchNotes != nil || watcher.pendingOpenSeries != nil || showStats
             || (playback.activeSession != nil && !playback.isMinimized)
     }
 
@@ -169,7 +182,7 @@ struct RootView: View {
     /// Shows pending patch notes only while no other sheet / cover is up.
     private func presentPatchNotesIfPossible() {
         guard let entries = pendingPatchNotes, patchNotes == nil else { return }
-        guard !sync.showOnboarding, playback.activeSession == nil,
+        guard !sync.showOnboarding, sync.conflict == nil, playback.activeSession == nil,
               watcher.pendingOpenSeries == nil, !showStats else { return }
         pendingPatchNotes = nil
         patchNotes = PatchNotesPayload(entries: entries)

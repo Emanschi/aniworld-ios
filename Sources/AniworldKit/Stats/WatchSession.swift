@@ -159,16 +159,21 @@ public struct StatsState: Codable, Hashable, Sendable {
     public var resetAt: Date?
     /// Download data volume per device and day (absent in files written by older versions).
     public var dataUsage: [DataUsageEntry]
+    /// Set when this device deliberately kept its own statistics against a newer reset ("Dieses Gerät
+    /// behalten"). Sessions of a state whose `restoredAt` is newer than the merged `resetAt` survive
+    /// that reset. Older app versions ignore the field.
+    public var restoredAt: Date?
 
     public init(sessions: [WatchSession] = [], seriesMeta: [String: SeriesMeta] = [:], resetAt: Date? = nil,
-                dataUsage: [DataUsageEntry] = []) {
+                dataUsage: [DataUsageEntry] = [], restoredAt: Date? = nil) {
         self.sessions = sessions
         self.seriesMeta = seriesMeta
         self.resetAt = resetAt
         self.dataUsage = dataUsage
+        self.restoredAt = restoredAt
     }
 
-    private enum CodingKeys: String, CodingKey { case sessions, seriesMeta, resetAt, dataUsage }
+    private enum CodingKeys: String, CodingKey { case sessions, seriesMeta, resetAt, dataUsage, restoredAt }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -176,6 +181,7 @@ public struct StatsState: Codable, Hashable, Sendable {
         seriesMeta = try c.decodeIfPresent([String: SeriesMeta].self, forKey: .seriesMeta) ?? [:]
         resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
         dataUsage = try c.decodeIfPresent([DataUsageEntry].self, forKey: .dataUsage) ?? []
+        restoredAt = try c.decodeIfPresent(Date.self, forKey: .restoredAt)
     }
 }
 
@@ -183,7 +189,8 @@ public struct StatsState: Codable, Hashable, Sendable {
 ///
 /// - sessions: union by `id`; on the same id the newer `endedAt` wins (then more watched time, then
 ///   a deterministic tie-break), so the result does not depend on the order of the inputs;
-/// - `resetAt`: the newest reset wins and every session that ended at or before it is dropped;
+/// - `resetAt`: the newest reset wins and every session that ended at or before it is dropped,
+///   except sessions of a state whose `restoredAt` is newer than that reset;
 /// - sessions older than `retention` are dropped;
 /// - series meta: per slug the newer `updatedAt` wins;
 /// - data usage: union by `id`; the entry with the larger total wins (counters only grow), entries
@@ -193,10 +200,16 @@ public enum StatsMerge {
 
     public static func merge(_ states: [StatsState], now: Date = Date()) -> StatsState {
         let reset: Date? = states.compactMap { $0.resetAt }.max()
-        let floor: Date = max(reset ?? Date.distantPast, now.addingTimeInterval(-retention))
+        let retentionFloor: Date = now.addingTimeInterval(-retention)
+        let resetFloor: Date = max(reset ?? Date.distantPast, retentionFloor)
+        func survivesReset(_ state: StatsState) -> Bool {
+            guard let reset, let restored = state.restoredAt else { return false }
+            return restored > reset
+        }
 
         var best: [String: WatchSession] = [:]
         for state in states {
+            let floor: Date = survivesReset(state) ? retentionFloor : resetFloor
             for session in state.sessions where session.endedAt > floor {
                 if let current = best[session.id] {
                     if isBetter(session, than: current) { best[session.id] = session }
@@ -212,7 +225,8 @@ public enum StatsMerge {
         var meta: [String: SeriesMeta] = [:]
         for state in states {
             // A reset also forgets genre info recorded before it.
-            for (slug, value) in state.seriesMeta where reset.map({ value.updatedAt > $0 }) ?? true {
+            let keepsAll = survivesReset(state)
+            for (slug, value) in state.seriesMeta where keepsAll || (reset.map({ value.updatedAt > $0 }) ?? true) {
                 if let current = meta[slug] {
                     let newer = value.updatedAt > current.updatedAt
                     let tie = value.updatedAt == current.updatedAt
@@ -226,6 +240,7 @@ public enum StatsMerge {
 
         var usage: [String: DataUsageEntry] = [:]
         for state in states {
+            let floor: Date = survivesReset(state) ? retentionFloor : resetFloor
             for entry in state.dataUsage where entry.updatedAt > floor {
                 if let current = usage[entry.id] {
                     if isBetter(entry, than: current) { usage[entry.id] = entry }
@@ -237,7 +252,9 @@ public enum StatsMerge {
         let dataUsage: [DataUsageEntry] = usage.values.sorted { (a: DataUsageEntry, b: DataUsageEntry) -> Bool in
             a.day != b.day ? a.day < b.day : a.id < b.id
         }
-        return StatsState(sessions: sessions, seriesMeta: meta, resetAt: reset, dataUsage: dataUsage)
+        let restored: Date? = states.filter { survivesReset($0) }.compactMap { $0.restoredAt }.max()
+        return StatsState(sessions: sessions, seriesMeta: meta, resetAt: reset, dataUsage: dataUsage,
+                          restoredAt: restored)
     }
 
     private static func isBetter(_ a: DataUsageEntry, than b: DataUsageEntry) -> Bool {
