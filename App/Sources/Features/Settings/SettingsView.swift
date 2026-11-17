@@ -13,6 +13,7 @@ struct SettingsView: View {
             Form {
                 PrioritySection()
                 PlaybackSection()
+                MobileDataSection()
                 CastSettingsSection()
                 DownloadsSettingsSection()
                 SyncSection()
@@ -225,6 +226,36 @@ private struct PlaybackSection: View {
     }
 }
 
+// MARK: Mobile Daten
+
+private struct MobileDataSection: View {
+    @Environment(SettingsStore.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Section {
+            Picker("Streaming im WLAN", selection: $settings.streamQualityWiFi) {
+                ForEach(StreamQuality.allCases) { quality in
+                    Text("\(quality.title) · \(quality.dataPerHourText)").tag(quality)
+                }
+            }
+            Picker("Streaming über mobile Daten", selection: $settings.streamQualityCellular) {
+                ForEach(StreamQuality.allCases) { quality in
+                    Text("\(quality.title) · \(quality.dataPerHourText)").tag(quality)
+                }
+            }
+            Toggle("Warnen bei mobilen Daten", isOn: $settings.warnOnCellularStreaming)
+                .tint(Theme.accent)
+            Toggle("Nur im WLAN herunterladen", isOn: $settings.downloadOnlyOnWiFi)
+                .tint(Theme.accent)
+        } header: {
+            Text("Mobile Daten")
+        } footer: {
+            Text("Begrenzt die Streaming-Qualität, getrennt für WLAN und mobile Daten; die Umschaltung greift auch während der Wiedergabe. Das Limit wirkt nur bei Streams mit mehreren Qualitätsstufen (HLS). Bei einigen Hostern gibt es nur eine Qualität (MP4), dort lässt sich der Datenverbrauch nicht begrenzen. Die GB-Angaben sind Richtwerte. Ist „Nur im WLAN herunterladen“ aus, fragt die App vor Downloads über mobile Daten nach und bietet „Später im WLAN laden“ an.")
+        }
+    }
+}
+
 // MARK: Fernseher
 
 private struct CastSettingsSection: View {
@@ -405,9 +436,6 @@ private struct DownloadsSettingsSection: View {
             }
 
             Toggle("Gesehene Folgen automatisch löschen", isOn: $settings.autoDeleteWatchedDownloads)
-                .tint(Theme.accent)
-
-            Toggle("Nur im WLAN herunterladen", isOn: $settings.downloadOnlyOnWiFi)
                 .tint(Theme.accent)
 
             HStack {

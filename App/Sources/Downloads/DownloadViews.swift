@@ -266,7 +266,7 @@ struct DownloadsView: View {
                     .lineLimit(2)
                 switch job.status {
                 case .queued:
-                    Text(downloads.isWaitingForWiFi ? "Wartet auf WLAN…" : "In Warteschlange")
+                    Text(downloads.isHeldForWiFi(job) ? "Wartet auf WLAN…" : "In Warteschlange")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
                 case .active:

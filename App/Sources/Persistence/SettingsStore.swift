@@ -89,6 +89,19 @@ final class SettingsStore {
         }
     }
 
+    /// Maximale Streaming-Qualität im WLAN / LAN.
+    var streamQualityWiFi: StreamQuality = .auto {
+        didSet { defaults.set(streamQualityWiFi.rawValue, forKey: Keys.streamQualityWiFi) }
+    }
+    /// Maximale Streaming-Qualität über mobile Daten.
+    var streamQualityCellular: StreamQuality = .medium {
+        didSet { defaults.set(streamQualityCellular.rawValue, forKey: Keys.streamQualityCellular) }
+    }
+    /// Beim Streamen über mobile Daten einmal pro App-Start auf den Datenverbrauch hinweisen.
+    var warnOnCellularStreaming: Bool = true {
+        didSet { defaults.set(warnOnCellularStreaming, forKey: Keys.warnOnCellularStreaming) }
+    }
+
     var streamPreferences: StreamPreferences {
         StreamPreferences(languagePriority: languagePriority, hosterPriority: hosterPriority)
     }
@@ -115,6 +128,9 @@ final class SettingsStore {
         static let downloadQuality = "settings.downloadQuality"
         static let autoDeleteWatchedDownloads = "settings.autoDeleteWatchedDownloads"
         static let downloadOnlyOnWiFi = "settings.downloadOnlyOnWiFi"
+        static let streamQualityWiFi = "settings.streamQualityWiFi"
+        static let streamQualityCellular = "settings.streamQualityCellular"
+        static let warnOnCellularStreaming = "settings.warnOnCellularStreaming"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -177,6 +193,15 @@ final class SettingsStore {
         }
         if defaults.object(forKey: Keys.downloadOnlyOnWiFi) != nil {
             downloadOnlyOnWiFi = defaults.bool(forKey: Keys.downloadOnlyOnWiFi)
+        }
+        if let raw = defaults.string(forKey: Keys.streamQualityWiFi), let value = StreamQuality(rawValue: raw) {
+            streamQualityWiFi = value
+        }
+        if let raw = defaults.string(forKey: Keys.streamQualityCellular), let value = StreamQuality(rawValue: raw) {
+            streamQualityCellular = value
+        }
+        if defaults.object(forKey: Keys.warnOnCellularStreaming) != nil {
+            warnOnCellularStreaming = defaults.bool(forKey: Keys.warnOnCellularStreaming)
         }
     }
 

@@ -14,6 +14,7 @@ struct RootView: View {
     @State private var didCheckPatchNotes = false
     @State private var showStats = false
     @State private var pendingDeepLink: URL?
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         @Bindable var playback = playback
@@ -53,16 +54,26 @@ struct RootView: View {
         .sheet(item: conflictBinding) { (info: SyncConflictInfo) in
             SyncConflictSheet(info: info)
         }
-        .overlay(alignment: .top) {
-            if updates.shouldShowBanner, let update = updates.availableUpdate {
-                UpdateBannerView(update: update) {
-                    withAnimation(.easeInOut(duration: 0.25)) { updates.dismissBanner() }
-                }
-                .padding(.top, 6)
-                .transition(.move(edge: .top).combined(with: .opacity))
+        .alert(
+            "Update verfügbar",
+            isPresented: Binding<Bool>(
+                // Only when no other sheet (sync setup, patch notes) or the player is on screen.
+                get: { updates.shouldShowPopup && playback.activeSession == nil
+                    && patchNotes == nil && !sync.showOnboarding },
+                set: { shown in if !shown { updates.postpone() } }
+            ),
+            presenting: updates.availableUpdate
+        ) { (update: AppUpdate) in
+            Button("Zum Release") {
+                updates.postpone()
+                openURL(update.url)
             }
+            Button("Später aktualisieren", role: .cancel) {
+                updates.postpone()
+            }
+        } message: { (update: AppUpdate) in
+            Text("AniWorld \(update.version) ist verfügbar (installiert: \(AppVersion.version)). Auf der Release-Seite findest du die IPA und die Anleitung zum Installieren.")
         }
-        .animation(.easeInOut(duration: 0.25), value: updates.shouldShowBanner)
         .sheet(item: $patchNotes) { (payload: PatchNotesPayload) in
             PatchNotesSheet(entries: payload.entries)
         }
