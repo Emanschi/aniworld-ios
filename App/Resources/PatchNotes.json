@@ -3,6 +3,8 @@
     "version": "0.5.3",
     "date": "2026-11-17",
     "notes": [
+      "Der Player stellt beim Schließen keine Helligkeit mehr zurück, die du zwischendurch selbst geändert hast (z. B. im Kontrollzentrum bei Bild-in-Bild).",
+      "Die Statistik speichert eine laufende Folge jetzt jede Minute zwischen – bei einem Absturz geht höchstens eine Minute verloren.",
       "Neu: Unterscheiden sich die Daten dieses Geräts und iCloud so, dass beim Abgleich etwas entfernt oder zurückgesetzt würde, fragt die App dich jetzt: Dieses Gerät behalten, iCloud übernehmen oder Zusammenführen. Einzelne Änderungen von anderen Geräten (z. B. ein entfernter Favorit oder eine als ungesehen markierte Folge) werden weiterhin ohne Nachfrage übernommen; gefragt wird nur bei Zurücksetzen, Leeren, vielen Änderungen auf einmal oder falscher Uhrzeit. Vorher wurde einfach überschrieben.",
       "Neu: Vor jeder solchen Entscheidung legt die App eine Sicherung an (die letzten 5 bleiben erhalten). In den Einstellungen unter „Synchronisierung“ kannst du die letzte Sicherung wiederherstellen.",
       "Neu: Beim Streamen über mobile Daten warnt dich der Player einmal pro App-Start vor dem hohen Datenverbrauch und zeigt den geschätzten Verbrauch der Folge. Dort kannst du auch gleich die Qualität senken.",

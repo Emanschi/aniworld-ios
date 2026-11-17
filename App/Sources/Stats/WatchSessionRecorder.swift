@@ -26,6 +26,8 @@ final class WatchSessionRecorder {
         var watchedSeconds: Double = 0
         var rateSeconds: Double = 0
         var skippedSeconds: Double = 0
+        /// Watch time at the last checkpoint written to disk.
+        var checkpointedSeconds: Double = 0
         var bytesWiFi: Int64 = 0
         var bytesCellular: Int64 = 0
     }
@@ -33,6 +35,8 @@ final class WatchSessionRecorder {
     static let maxPauseSeconds: TimeInterval = 10 * 60
     private static let maxTickGap: TimeInterval = 2.0
     private static let completedFraction = 0.9
+    /// The running session is saved this often (watch time), so a crash or kill loses at most this much.
+    private static let checkpointSeconds: Double = 60
 
     private let store: WatchStatsStore
     private var context: Context?
@@ -121,6 +125,16 @@ final class WatchSessionRecorder {
             open = o
         }
         storeCompletionIfNeeded()
+        checkpointIfNeeded()
+    }
+
+    /// Saves the still running session (same id, replaced on every save) without closing it.
+    private func checkpointIfNeeded() {
+        guard var o = open, o.watchedSeconds - o.checkpointedSeconds >= Self.checkpointSeconds,
+              let session = makeSession(o, endedAt: o.lastPlayingAt) else { return }
+        o.checkpointedSeconds = o.watchedSeconds
+        open = o
+        store.record(session, notifySync: false)
     }
 
     /// As soon as the episode counts as completed, the running session is stored right away (and
@@ -168,9 +182,12 @@ final class WatchSessionRecorder {
             open = nil
             lastTickAt = nil
         }
-        guard let o = open, let c = context else { return }
-        guard o.watchedSeconds >= 30 else { return }
-        let end: Date = endedAt ?? o.lastPlayingAt
+        guard let o = open, let session = makeSession(o, endedAt: endedAt ?? o.lastPlayingAt) else { return }
+        store.record(session)
+    }
+
+    private func makeSession(_ o: Open, endedAt end: Date) -> WatchSession? {
+        guard let c = context, o.watchedSeconds >= 30 else { return nil }
         let avgRate: Double = o.watchedSeconds > 0 ? o.rateSeconds / o.watchedSeconds : 1
         let session = WatchSession(
             id: o.id,
@@ -193,6 +210,6 @@ final class WatchSessionRecorder {
             bytesWiFi: c.offline ? nil : o.bytesWiFi,
             bytesCellular: c.offline ? nil : o.bytesCellular
         )
-        store.record(session)
+        return session
     }
 }

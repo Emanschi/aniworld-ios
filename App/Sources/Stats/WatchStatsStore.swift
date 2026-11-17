@@ -140,15 +140,16 @@ final class WatchStatsStore {
 
     // MARK: Recording
 
-    /// Stores a finished session. Sessions under 30 seconds of watch time are ignored.
-    func record(_ session: WatchSession) {
+    /// Stores a finished session (or a checkpoint of a running one, same id). Sessions under 30 seconds
+    /// of watch time are ignored. `notifySync: false` only saves locally (frequent checkpoints).
+    func record(_ session: WatchSession, notifySync: Bool = true) {
         guard session.watchedSeconds >= 30 else { return }
         var s = session
         s.deviceID = deviceID
         sessions.removeAll { $0.id == s.id }
         sessions.append(s)
         pruneOld()
-        scheduleSave(notify: true)
+        scheduleSave(notify: notifySync)
         flush()
     }
 

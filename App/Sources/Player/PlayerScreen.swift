@@ -47,9 +47,12 @@ struct PlayerScreen: View {
             PlayerOrientation.enterPlayer()
         }
         .onDisappear {
-            if let orig = originalBrightness {
+            // Give the original brightness back, unless the user changed it outside the player meanwhile
+            // (e.g. in Control Center during Picture in Picture).
+            if let orig = originalBrightness, PlayerBrightness.isStillOurs {
                 UIScreen.main.brightness = orig
             }
+            PlayerBrightness.lastSet = nil
             viewModel?.shutdown()
             PlayerOrientation.leavePlayer()
         }
@@ -89,12 +92,31 @@ struct PlayerScreen: View {
             let current = UIScreen.main.brightness
             if abs(current - orig) > 0.001 {
                 playerBrightness = current
-                UIScreen.main.brightness = orig
+                PlayerBrightness.set(orig)
             }
         } else if let custom = playerBrightness {
-            UIScreen.main.brightness = custom
+            // Only re-apply the player's value if nobody changed the brightness while we were away.
+            if PlayerBrightness.isStillOurs { PlayerBrightness.set(custom) }
             playerBrightness = nil
         }
+    }
+}
+
+/// Remembers the last brightness the player itself set, to tell it apart from changes by the user
+/// outside the player (Control Center, Settings).
+@MainActor
+enum PlayerBrightness {
+    static var lastSet: CGFloat?
+
+    static func set(_ value: CGFloat) {
+        UIScreen.main.brightness = value
+        lastSet = UIScreen.main.brightness
+    }
+
+    /// True when the player never changed the brightness or it is still at the player's last value.
+    static var isStillOurs: Bool {
+        guard let lastSet else { return true }
+        return abs(UIScreen.main.brightness - lastSet) < 0.02
     }
 }
 
@@ -424,7 +446,7 @@ private struct PlayerContentView: View {
 
         if isLeft {
             let target = min(max(baseBrightness + deltaFraction, 0), 1)
-            UIScreen.main.brightness = CGFloat(target)
+            PlayerBrightness.set(CGFloat(target))
             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                 hudState = PlayerHUDState(kind: .brightness, value: target)
             }
