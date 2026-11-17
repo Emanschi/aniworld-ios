@@ -57,7 +57,7 @@ final class PlayerViewModel {
     private(set) var cellularWarningVisible = false
     /// True while the current episode plays from a downloaded file.
     private(set) var isOfflinePlayback = false
-    @ObservationIgnored private static var cellularWarningShownThisSession = false
+    private static var cellularWarningShownThisSession = false
     @ObservationIgnored private var celebrationTask: Task<Void, Never>?
 
     // Custom-UI state
