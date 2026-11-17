@@ -27,6 +27,7 @@ struct AniworldApp: App {
                 .environment(env.watcher)
                 .environment(env.stats)
                 .environment(env.streakReminders)
+                .environment(env.network)
                 .environment(\.aniworld, env.service)
                 .preferredColorScheme(.dark)
                 .onChange(of: scenePhase) { _, newPhase in
@@ -60,6 +61,7 @@ struct AppEnvironment {
     let stats: WatchStatsStore
     let widgets: WidgetSnapshotWriter
     let streakReminders: StreakReminderScheduler
+    let network: NetworkStatus
 
     static func live() -> AppEnvironment {
         make(service: AniworldClient())
@@ -77,7 +79,8 @@ struct AppEnvironment {
             watcher: EpisodeWatcher(service: service, library: library, settings: settings),
             stats: stats,
             widgets: WidgetSnapshotWriter(stats: stats, library: library),
-            streakReminders: StreakReminderScheduler(stats: stats, settings: settings)
+            streakReminders: StreakReminderScheduler(stats: stats, settings: settings),
+            network: NetworkStatus()
         )
     }
 }

@@ -66,6 +66,8 @@ struct DownloadJob: Codable, Identifiable, Hashable {
     var addedAt: Date
     /// True while the finished file is being re-encoded (status stays `.active`, no record yet).
     var isCompressing: Bool? = nil
+    /// "Später im WLAN laden": the job starts only while Wi-Fi is available (independent of the global setting).
+    var waitsForWiFi: Bool? = nil
 }
 
 /// What the UI shows for one episode.

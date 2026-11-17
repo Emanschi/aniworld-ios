@@ -53,6 +53,11 @@ final class PlayerViewModel {
     private(set) var noIntroPromptVisible = false
     /// New streak length while the "Streak verlängert" banner is shown, nil otherwise.
     private(set) var streakCelebration: Int?
+    /// "Du schaust über mobile Daten": shown (playback paused) at most once per app session.
+    private(set) var cellularWarningVisible = false
+    /// True while the current episode plays from a downloaded file.
+    private(set) var isOfflinePlayback = false
+    @ObservationIgnored private static var cellularWarningShownThisSession = false
     @ObservationIgnored private var celebrationTask: Task<Void, Never>?
 
     // Custom-UI state
@@ -79,6 +84,7 @@ final class PlayerViewModel {
     @ObservationIgnored private var settings: SettingsStore?
     @ObservationIgnored private weak var coordinator: PlaybackCoordinator?
     @ObservationIgnored private var downloads: DownloadManager?
+    @ObservationIgnored private var network: NetworkStatus?
     @ObservationIgnored private var stats: WatchStatsStore?
     @ObservationIgnored private var recorder: WatchSessionRecorder?
 
@@ -139,7 +145,7 @@ final class PlayerViewModel {
 
     func attach(service: AniworldService, library: LibraryStore, settings: SettingsStore,
                 coordinator: PlaybackCoordinator, downloads: DownloadManager? = nil,
-                stats: WatchStatsStore? = nil) {
+                stats: WatchStatsStore? = nil, network: NetworkStatus? = nil) {
         guard !attached else { return }
         attached = true
         self.service = service
@@ -148,6 +154,7 @@ final class PlayerViewModel {
         self.coordinator = coordinator
         self.downloads = downloads
         self.stats = stats
+        self.network = network
         if let stats {
             let recorder = WatchSessionRecorder(store: stats)
             recorder.onStreakExtended = { [weak self] days in self?.celebrateStreak(days) }
@@ -355,6 +362,8 @@ final class PlayerViewModel {
         let asset = AVURLAsset(url: stream.url, options: ["AVURLAssetHTTPHeaderFieldsKey": stream.headers])
         let item = AVPlayerItem(asset: asset)
         item.externalMetadata = metadata()
+        isOfflinePlayback = offline
+        if !offline { effectiveStreamQuality.apply(to: item) }
 
         readyHandled = false
         pendingStart = start
@@ -390,6 +399,51 @@ final class PlayerViewModel {
         }
         player.replaceCurrentItem(with: item)
         hasItem = true
+        if !offline { checkCellularWarning() }
+    }
+
+    // MARK: Streaming quality / mobile data
+
+    /// Quality limit for the current connection type (mobile data vs. Wi-Fi).
+    var effectiveStreamQuality: StreamQuality {
+        guard let settings else { return .auto }
+        return network?.usesMobileData == true ? settings.streamQualityCellular : settings.streamQualityWiFi
+    }
+
+    /// True if the quality limit can work: only adaptive (HLS) streams offer several qualities.
+    var streamIsAdaptive: Bool {
+        guard let ext = currentStream?.url.pathExtension.lowercased() else { return true }
+        return ext != "mp4" && ext != "m4v"
+    }
+
+    /// Re-applies the quality limit to the running item (network type or setting changed).
+    func applyStreamQuality() {
+        guard !isOfflinePlayback, let item = player.currentItem else { return }
+        effectiveStreamQuality.apply(to: item)
+        checkCellularWarning()
+    }
+
+    /// Estimated data use of the current episode at the cellular quality, in bytes.
+    var cellularEstimateBytes: Double {
+        let seconds = duration > 0 ? duration : 24 * 60
+        return (settings?.streamQualityCellular ?? .medium).estimatedBytes(seconds: seconds)
+    }
+
+    private func checkCellularWarning() {
+        guard !isShutdown, !isOfflinePlayback, !cast.isActive, !cellularWarningVisible,
+              !Self.cellularWarningShownThisSession,
+              settings?.warnOnCellularStreaming == true,
+              network?.usesMobileData == true else { return }
+        Self.cellularWarningShownThisSession = true
+        cellularWarningVisible = true
+        player.pause()
+    }
+
+    /// "Weiter schauen" (and "Nicht mehr fragen", which also switches the setting off).
+    func dismissCellularWarning(disableFuture: Bool = false) {
+        if disableFuture { settings?.warnOnCellularStreaming = false }
+        cellularWarningVisible = false
+        if state == .playing, !cast.isActive { play() }
     }
 
     private func removeItemObservers() {
@@ -437,7 +491,7 @@ final class PlayerViewModel {
                 self.readyForSaving = true
                 self.evaluateIntroPrompt()
                 // While casting the episode plays on the TV; the local item only stays ready.
-                if !self.cast.isActive { self.play() }
+                if !self.cast.isActive && !self.cellularWarningVisible { self.play() }
                 self.updateNowPlaying()
                 Task { await self.prepareNext() }
             }

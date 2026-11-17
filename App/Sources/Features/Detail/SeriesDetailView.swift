@@ -10,7 +10,11 @@ struct SeriesDetailView: View {
     @Environment(PlaybackCoordinator.self) private var playback
     @Environment(DownloadManager.self) private var downloads
     @Environment(WatchStatsStore.self) private var stats
+    @Environment(NetworkStatus.self) private var network
     @State private var downloadPrompt: EpisodeRef?
+    /// Episodes waiting for the "Über mobile Daten laden?" decision.
+    @State private var cellularDownloadEpisodes: [EpisodeRef] = []
+    @State private var wifiOnlyHintShown = false
     @State private var confirmDeleteSeason = false
     @State private var confirmDeleteSeries = false
     @State private var resetPrompt: ResetScope?
@@ -115,6 +119,30 @@ struct SeriesDetailView: View {
                 Button("Download abbrechen", role: .destructive) { downloads.cancel(episode.id) }
             }
             Button("Zurück", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Über mobile Daten laden?",
+            isPresented: Binding<Bool>(
+                get: { !cellularDownloadEpisodes.isEmpty },
+                set: { if !$0 { cellularDownloadEpisodes = [] } }),
+            titleVisibility: .visible
+        ) {
+            Button("Jetzt über mobile Daten laden") {
+                startDownload(cellularDownloadEpisodes, onlyOnWiFi: false)
+                cellularDownloadEpisodes = []
+            }
+            Button("Später im WLAN laden") {
+                startDownload(cellularDownloadEpisodes, onlyOnWiFi: true)
+                cellularDownloadEpisodes = []
+            }
+            Button("Abbrechen", role: .cancel) { cellularDownloadEpisodes = [] }
+        } message: {
+            Text("Du bist gerade nicht im WLAN. Der Download braucht \(StreamDataFormat.downloadEstimate(episodes: cellularDownloadEpisodes.count)) Datenvolumen. „Später im WLAN laden“ startet ihn automatisch, sobald du wieder im WLAN bist.")
+        }
+        .alert("Wartet auf WLAN", isPresented: $wifiOnlyHintShown) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("„Nur im WLAN herunterladen“ ist aktiv. Der Download startet automatisch, sobald du im WLAN bist.")
         }
         .task(id: series.slug) {
             await vm.load(series: series, preferredSeason: lastWatched?.episode.season, service: service)
@@ -396,8 +424,7 @@ struct SeriesDetailView: View {
                     }
                     Spacer()
                     Button {
-                        downloads.download(series: displaySummary, episodes: episodes,
-                                           language: languageBinding.wrappedValue)
+                        requestDownload(episodes)
                         Haptics.impact()
                     } label: {
                         Label(isFilmsSelected ? "Alle Filme laden" : "Ganze Staffel laden",
@@ -470,10 +497,36 @@ struct SeriesDetailView: View {
             : "Download von \(episode.code) abbrechen?"
     }
 
+    /// Asks before downloading over mobile data; with "Nur im WLAN" the jobs just wait for Wi-Fi.
+    private func requestDownload(_ episodes: [EpisodeRef]) {
+        let fresh = episodes.filter { episode in
+            switch downloads.state(for: episode.id) {
+            case .none, .failed: return true
+            default: return false
+            }
+        }
+        guard !fresh.isEmpty else { return }
+        if network.isCellular {
+            if settings.downloadOnlyOnWiFi {
+                startDownload(fresh, onlyOnWiFi: false)
+                wifiOnlyHintShown = true
+            } else {
+                cellularDownloadEpisodes = fresh
+            }
+            return
+        }
+        startDownload(fresh, onlyOnWiFi: false)
+    }
+
+    private func startDownload(_ episodes: [EpisodeRef], onlyOnWiFi: Bool) {
+        downloads.download(series: displaySummary, episodes: episodes,
+                           language: languageBinding.wrappedValue, onlyOnWiFi: onlyOnWiFi)
+    }
+
     private func downloadTapped(_ episode: EpisodeRef) {
         switch downloads.state(for: episode.id) {
         case .none:
-            downloads.download(series: displaySummary, episodes: [episode], language: languageBinding.wrappedValue)
+            requestDownload([episode])
             Haptics.impact()
         case .failed:
             downloads.retry(episode.id)
