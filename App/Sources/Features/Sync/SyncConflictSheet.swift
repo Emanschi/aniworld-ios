@@ -24,6 +24,21 @@ struct SyncConflictSheet: View {
                         .foregroundStyle(Theme.textSecondary)
                         .multilineTextAlignment(.center)
 
+                    if !info.reasons.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(info.reasons.enumerated()), id: \.offset) { _, reason in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.orange)
+                                    Text(reason.text).font(.subheadline)
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: Theme.cardRadius).fill(Theme.surface))
+                    }
+
                     lossesCard
 
                     summaryCard(title: "Dieses Gerät", systemImage: "iphone", summary: info.local)

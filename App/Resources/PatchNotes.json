@@ -3,7 +3,7 @@
     "version": "0.5.3",
     "date": "2026-11-17",
     "notes": [
-      "Neu: Unterscheiden sich die Daten dieses Geräts und iCloud so, dass beim Abgleich etwas entfernt oder zurückgesetzt würde, fragt die App dich jetzt: Dieses Gerät behalten, iCloud übernehmen oder Zusammenführen. Vorher wurde einfach überschrieben.",
+      "Neu: Unterscheiden sich die Daten dieses Geräts und iCloud so, dass beim Abgleich etwas entfernt oder zurückgesetzt würde, fragt die App dich jetzt: Dieses Gerät behalten, iCloud übernehmen oder Zusammenführen. Einzelne Änderungen von anderen Geräten (z. B. ein entfernter Favorit oder eine als ungesehen markierte Folge) werden weiterhin ohne Nachfrage übernommen; gefragt wird nur bei Zurücksetzen, Leeren, vielen Änderungen auf einmal oder falscher Uhrzeit. Vorher wurde einfach überschrieben.",
       "Neu: Vor jeder solchen Entscheidung legt die App eine Sicherung an (die letzten 5 bleiben erhalten). In den Einstellungen unter „Synchronisierung“ kannst du die letzte Sicherung wiederherstellen."
     ]
   },

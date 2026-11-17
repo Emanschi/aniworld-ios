@@ -281,7 +281,7 @@ final class LibrarySyncService {
                 let plan = SyncPlanner.plan(local: library.exportState(), localStats: stats.exportState(),
                                             localDeviceName: deviceName, remote: read.snapshots)
                 if plan.needsDecision {
-                    var info = SyncConflictInfo(local: plan.local, remote: plan.remote, losses: plan.losses,
+                    var info = SyncConflictInfo(local: plan.local, remote: plan.remote, losses: plan.losses, reasons: plan.reasons,
                                                 remoteSnapshots: read.snapshots)
                     if let existing = conflict { info.id = existing.id }
                     conflict = info

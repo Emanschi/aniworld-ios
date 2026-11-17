@@ -34,6 +34,7 @@ final class SyncConflictTests: XCTestCase {
         let remote = LibraryState(resetAt: t(-10))
         let p = plan(local, [snapshot("R", remote)])
         XCTAssertTrue(p.needsDecision)
+        XCTAssertTrue(p.reasons.contains(.remoteReset))
         XCTAssertEqual(p.losses.favorites, 1)
         XCTAssertEqual(p.losses.history, 1)
         XCTAssertEqual(p.losses.progressRemoved, 1)
@@ -45,7 +46,10 @@ final class SyncConflictTests: XCTestCase {
         let local = LibraryState(favorites: [fav("a", t(-100))])
         // Remote device with a clock far in the future removed "a".
         let remote = LibraryState(favoriteTombstones: ["a": t(86_400 * 30)])
-        XCTAssertEqual(plan(local, [snapshot("R", remote)]).losses.favorites, 1)
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertEqual(p.losses.favorites, 1)
+        XCTAssertTrue(p.needsDecision)
+        XCTAssertTrue(p.reasons.contains(.futureTimestamp))
     }
 
     func testProgressBackwardsAndUnwatchedAreDetected() {
@@ -59,6 +63,7 @@ final class SyncConflictTests: XCTestCase {
         remote.progress["a-s1e3"] = EpisodeProgress(position: 770, duration: 1400, watched: false, updatedAt: t(-10))
         let p = plan(local, [snapshot("R", remote)])
         XCTAssertEqual(p.losses.progressBackwards, 2) // e3 is within the tolerance
+        XCTAssertFalse(p.needsDecision) // a few newer remote progress records are applied silently
         XCTAssertEqual(p.losses.progressRemoved, 0)
     }
 
@@ -67,7 +72,116 @@ final class SyncConflictTests: XCTestCase {
                               outroStart: nil, outroEnd: nil, updatedAt: t(-100))
         let local = LibraryState(customSkips: [skip])
         let remote = LibraryState(customSkipTombstones: [skip.key: t(-10)])
-        XCTAssertEqual(plan(local, [snapshot("R", remote)]).losses.customSkips, 1)
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertEqual(p.losses.customSkips, 1)
+        XCTAssertFalse(p.needsDecision)
+    }
+
+    // MARK: Silent vs. asking
+
+    func testSingleRemoteFavoriteRemovalIsSilent() {
+        let local = LibraryState(favorites: [fav("a", t(-100)), fav("b", t(-100))])
+        let remote = LibraryState(favoriteTombstones: ["a": t(-10)])
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertEqual(p.losses.favorites, 1)
+        XCTAssertFalse(p.needsDecision)
+        XCTAssertEqual(p.merged.favorites.map { $0.id }, ["b"])
+    }
+
+    func testSingleHistoryRemovalAndSmallProgressChangeAreSilent() {
+        var local = LibraryState(favorites: [fav("x", t(-100))], history: [watch("a", t(-100))])
+        local.progress["a-s1e1"] = EpisodeProgress(position: 1400, duration: 1400, watched: true, updatedAt: t(-100))
+        var remote = LibraryState(historyTombstones: ["a": t(-10)])
+        remote.progress["a-s1e1"] = EpisodeProgress(position: 0, duration: 1400, watched: false, updatedAt: t(-10))
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertEqual(p.losses.history, 1)
+        XCTAssertEqual(p.losses.progressBackwards, 1)
+        XCTAssertFalse(p.needsDecision)
+    }
+
+    func testTombstoneWithinClockToleranceIsSilentButFarFutureAsks() {
+        let local = LibraryState(favorites: [fav("a", t(-100)), fav("b", t(-100))])
+        let near = LibraryState(favoriteTombstones: ["a": t(60)])
+        XCTAssertFalse(plan(local, [snapshot("R", near)]).needsDecision)
+        let far = LibraryState(favoriteTombstones: ["a": t(600)])
+        let p = plan(local, [snapshot("R", far)])
+        XCTAssertTrue(p.needsDecision)
+        XCTAssertTrue(p.reasons.contains(.futureTimestamp))
+    }
+
+    func testFutureResetAsksEvenWhenItRemovesNothingLocally() {
+        let local = LibraryState(favorites: [fav("a", t(-100)), fav("b", t(-100))],
+                                 history: [watch("a", t(-100))])
+        // Remote tombstone silently removes "a", but a future historyClearedAt is also present.
+        let remote = LibraryState(favoriteTombstones: ["a": t(-10)], historyClearedAt: t(86_400))
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertTrue(p.needsDecision)
+        XCTAssertTrue(p.reasons.contains(.futureTimestamp))
+    }
+
+    func testHistoryClearedAsks() {
+        let local = LibraryState(favorites: [fav("x", t(-100))], history: [watch("a", t(-100))])
+        let remote = LibraryState(historyClearedAt: t(-10))
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertTrue(p.needsDecision)
+        XCTAssertEqual(p.reasons, [.historyCleared])
+    }
+
+    func testRemoteResetAsksWithReason() {
+        let local = LibraryState(favorites: [fav("a", t(-100)), fav("b", t(-100))])
+        let p = plan(local, [snapshot("R", LibraryState(resetAt: t(-10)))])
+        XCTAssertTrue(p.reasons.contains(.remoteReset))
+    }
+
+    func testManyFavoriteRemovalsAsk() {
+        let favs = (0..<SyncPlanner.favoritesThreshold + 2).map { fav("f\($0)", t(-100)) }
+        var tombs: [String: Date] = [:]
+        for f in favs.prefix(SyncPlanner.favoritesThreshold) { tombs[f.id] = t(-10) }
+        let p = plan(LibraryState(favorites: favs), [snapshot("R", LibraryState(favoriteTombstones: tombs))])
+        XCTAssertTrue(p.needsDecision)
+        XCTAssertEqual(p.reasons, [.tooMany("Favoriten", SyncPlanner.favoritesThreshold)])
+    }
+
+    func testManyCustomSkipRemovalsAsk() {
+        let skips = (0..<SyncPlanner.customSkipsThreshold + 1).map {
+            CustomSkip(seriesSlug: "s\($0)", season: 1, episode: nil, introStart: 5, introEnd: 80,
+                       outroStart: nil, outroEnd: nil, updatedAt: t(-100))
+        }
+        var tombs: [String: Date] = [:]
+        for s in skips.prefix(SyncPlanner.customSkipsThreshold) { tombs[s.key] = t(-10) }
+        let p = plan(LibraryState(favorites: [fav("k", t(-1))], customSkips: skips),
+                     [snapshot("R", LibraryState(customSkipTombstones: tombs))])
+        XCTAssertTrue(p.needsDecision)
+    }
+
+    func testManyProgressRegressionsAsk() {
+        var local = LibraryState(favorites: [fav("k", t(-1))])
+        var remote = LibraryState()
+        for i in 0..<SyncPlanner.progressThreshold {
+            local.progress["a-s1e\(i)"] = EpisodeProgress(position: 1400, duration: 1400, watched: true, updatedAt: t(-100))
+            remote.progress["a-s1e\(i)"] = EpisodeProgress(position: 0, duration: 1400, watched: false, updatedAt: t(-10))
+        }
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertEqual(p.losses.progressBackwards, SyncPlanner.progressThreshold)
+        XCTAssertTrue(p.needsDecision)
+    }
+
+    func testWipingSmallLocalLibraryEntirelyAsks() {
+        let local = LibraryState(favorites: [fav("a", t(-100)), fav("b", t(-100)), fav("c", t(-100))])
+        let remote = LibraryState(favoriteTombstones: ["a": t(-10), "b": t(-10), "c": t(-10)])
+        let p = plan(local, [snapshot("R", remote)])
+        XCTAssertEqual(p.reasons, [.wholesale])
+    }
+
+    func testStatsResetAsks() {
+        let s = WatchSession(id: "s1", seriesSlug: "a", seriesTitle: "A", season: 1, episode: 1, language: nil,
+                             hoster: "VOE", startedAt: t(-5000), endedAt: t(-3800), watchedSeconds: 1200,
+                             episodeDuration: 1400, completed: true, skippedSeconds: 0, wasOffline: false,
+                             deviceID: "L")
+        let p = SyncPlanner.plan(local: LibraryState(), localStats: StatsState(sessions: [s]),
+                                 localDeviceName: "Ich",
+                                 remote: [snapshot("R", LibraryState(), stats: StatsState(resetAt: t(-10)))], now: now)
+        XCTAssertTrue(p.reasons.contains(.statsReset))
     }
 
     func testDroppedStatsSessionsAreDetected() {
