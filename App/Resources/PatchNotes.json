@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.5.3",
+    "date": "2026-11-17",
+    "notes": [
+      "Der Player stellt beim Schließen keine Helligkeit mehr zurück, die du zwischendurch selbst geändert hast (z. B. im Kontrollzentrum bei Bild-in-Bild).",
+      "Die Statistik speichert eine laufende Folge jetzt jede Minute zwischen – bei einem Absturz geht höchstens eine Minute verloren."
+    ]
+  },
+  {
     "version": "0.5.2",
     "date": "2026-11-14",
     "notes": [
