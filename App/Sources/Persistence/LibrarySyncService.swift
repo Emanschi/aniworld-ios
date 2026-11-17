@@ -18,6 +18,11 @@ final class LibrarySyncService {
     private(set) var devices: [SyncDevice] = []
     /// Drives the first-launch onboarding sheet.
     var showOnboarding = false
+    /// Set when merging would remove or replace local data; the app asks the user (nothing is applied
+    /// and nothing is written until `resolveConflict` is called).
+    var conflict: SyncConflictInfo?
+    /// Date of the newest local backup (nil = none), for the settings section.
+    private(set) var lastBackupAt: Date?
 
     // MARK: Internals
 
@@ -36,6 +41,8 @@ final class LibrarySyncService {
     @ObservationIgnored private var lastWrittenState: LibraryState?
     @ObservationIgnored private var lastWriteAt: Date?
     @ObservationIgnored private var lastWrittenStatsRevision: Int?
+    @ObservationIgnored private var lastRemoteSnapshots: [SyncSnapshot] = []
+    @ObservationIgnored private let backups = LibraryBackupStore.standard()
 
     private static let deviceIDKey = "sync.deviceID"
     private static let dismissedKey = "sync.onboardingDismissed"
@@ -59,6 +66,7 @@ final class LibrarySyncService {
         }
         isConfigured = FolderBookmark.isStored
         if let t = defaults.object(forKey: Self.lastSyncKey) as? Date { lastSyncAt = t }
+        lastBackupAt = backups?.latest()?.createdAt
     }
 
     var deviceName: String { UIDevice.current.name }
@@ -104,6 +112,8 @@ final class LibrarySyncService {
         }
         isConfigured = true
         showOnboarding = false
+        conflict = nil
+        lastRemoteSnapshots = []
         lastError = nil
         lastWrittenState = nil
         lastWrittenStatsRevision = nil
@@ -121,6 +131,8 @@ final class LibrarySyncService {
         FolderBookmark.clear()
         isConfigured = false
         devices = []
+        conflict = nil
+        lastRemoteSnapshots = []
         lastError = nil
         lastSyncAt = nil
         defaults.removeObject(forKey: Self.lastSyncKey)
@@ -134,6 +146,65 @@ final class LibrarySyncService {
 
     func syncNow() {
         requestSync(.full, background: false, force: true)
+    }
+
+    // MARK: Conflict decision & backups
+
+    /// The user's answer from the "Gespeicherte Stände unterscheiden sich" sheet.
+    func resolveConflict(_ choice: SyncConflictChoice) {
+        guard let info = conflict else { return }
+        conflict = nil
+        let now = Date()
+        let local = library.exportState()
+        let localStats = stats.exportState()
+        let remoteStates: [LibraryState] = info.remoteSnapshots.map { $0.state }
+        let remoteStats: [StatsState] = info.remoteSnapshots.map { $0.statsState }
+        // Whatever happens next may remove local data: keep a copy first.
+        let reason: String
+        switch choice {
+        case .merge: reason = "Vor dem Zusammenführen"
+        case .adoptRemote: reason = "Vor dem Übernehmen von iCloud"
+        case .keepLocal: reason = "Vor dem Behalten dieses Geräts"
+        }
+        writeBackup(reason: reason, library: local, stats: localStats)
+
+        switch choice {
+        case .merge:
+            library.apply(merged: LibraryMerge.merge([local] + remoteStates, now: now))
+            stats.apply(merged: StatsMerge.merge([localStats] + remoteStats, now: now))
+        case .adoptRemote:
+            let adopted = SyncPlanner.adoptRemote(remote: info.remoteSnapshots, localStats: localStats, now: now)
+            library.apply(merged: adopted.library)
+            stats.apply(merged: adopted.stats)
+        case .keepLocal:
+            library.apply(merged: SyncPlanner.assertLocal(local, over: remoteStates, now: now))
+            stats.assertLocal(floor: remoteStats.compactMap { $0.resetAt }.max())
+        }
+        library.flush()
+        requestSync(.full, background: false, force: true)
+    }
+
+    /// Puts the newest backup back and makes this device authoritative again (so the next sync
+    /// doesn't undo it). Returns false if there is no readable backup.
+    @discardableResult
+    func restoreLastBackup() -> Bool {
+        guard let backup = backups?.latest() else { return false }
+        conflict = nil
+        // The current state is saved first, so the restore itself can be undone.
+        writeBackup(reason: "Vor dem Wiederherstellen", library: library.exportState(), stats: stats.exportState())
+        let remoteStates: [LibraryState] = lastRemoteSnapshots.map { $0.state }
+        library.apply(merged: SyncPlanner.assertLocal(backup.library, over: remoteStates))
+        stats.assertLocal(restoring: backup.stats,
+                          floor: lastRemoteSnapshots.compactMap { $0.statsResetAt }.max())
+        library.flush()
+        requestSync(.full, background: false, force: true)
+        return true
+    }
+
+    private func writeBackup(reason: String, library: LibraryState, stats: StatsState) {
+        guard let backups else { return }
+        let backup = LibraryBackup(createdAt: Date(), reason: reason, library: library, stats: stats)
+        if (try? backups.write(backup)) != nil { lastBackupAt = backup.createdAt }
     }
 
     // MARK: Triggers
@@ -204,21 +275,33 @@ final class LibrarySyncService {
                 let read = try await Task.detached(priority: .utility) {
                     try SyncFolderIO.readRemote(picked: picked, ownDeviceID: ownID)
                 }.value
-                // Merge against the *current* local state (it may have changed during the read).
-                let merged = LibraryMerge.merge([library.exportState()] + read.snapshots.map { $0.state })
-                library.apply(merged: merged)
-                let mergedStats = StatsMerge.merge([stats.exportState()] + read.snapshots.map { $0.statsState })
-                stats.apply(merged: mergedStats)
+                lastRemoteSnapshots = read.snapshots
+                // Compare against the *current* local state (it may have changed during the read).
+                // Nothing is applied if the merge would remove or replace local data: the user decides.
+                let plan = SyncPlanner.plan(local: library.exportState(), localStats: stats.exportState(),
+                                            localDeviceName: deviceName, remote: read.snapshots)
+                if plan.needsDecision {
+                    var info = SyncConflictInfo(local: plan.local, remote: plan.remote, losses: plan.losses,
+                                                remoteSnapshots: read.snapshots)
+                    if let existing = conflict { info.id = existing.id }
+                    conflict = info
+                } else {
+                    conflict = nil
+                    library.apply(merged: plan.merged)
+                    stats.apply(merged: plan.mergedStats)
+                }
                 devices = read.snapshots
                     .map { SyncDevice(id: $0.deviceID, name: $0.deviceName, writtenAt: $0.writtenAt) }
                     .sorted { $0.writtenAt > $1.writtenAt }
                 pending = read.pendingDownloads
             }
 
+            // While the user has not decided, this device's file stays as it is.
             let state = library.exportState()
             let stale = lastWriteAt.map { Date().timeIntervalSince($0) > Self.heartbeatSeconds } ?? true
             let statsRevision = stats.localRevision
-            if force || stale || state != lastWrittenState || statsRevision != lastWrittenStatsRevision {
+            if conflict == nil,
+               force || stale || state != lastWrittenState || statsRevision != lastWrittenStatsRevision {
                 let snapshot = SyncSnapshot(deviceID: ownID, deviceName: deviceName, state: state,
                                             stats: stats.exportOwnState())
                 try await Task.detached(priority: .utility) {
@@ -229,7 +312,7 @@ final class LibrarySyncService {
                 lastWriteAt = Date()
             }
             lastError = nil
-            if mode == .full {
+            if mode == .full, conflict == nil {
                 let now = Date()
                 lastSyncAt = now
                 defaults.set(now, forKey: Self.lastSyncKey)

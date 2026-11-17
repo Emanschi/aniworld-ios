@@ -69,6 +69,7 @@ struct SettingsView: View {
 private struct SyncSection: View {
     @Environment(LibrarySyncService.self) private var sync
     @State private var showPicker = false
+    @State private var confirmRestore = false
 
     private func relative(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
@@ -116,6 +117,16 @@ private struct SyncSection: View {
                 Button("Jetzt synchronisieren") { sync.syncNow() }
                     .disabled(sync.isSyncing)
                 Button("Synchronisierung deaktivieren", role: .destructive) { sync.disable() }
+            }
+            if let backupAt = sync.lastBackupAt {
+                Button("Letzte Sicherung wiederherstellen (\(relative(backupAt)))") { confirmRestore = true }
+                    .confirmationDialog("Letzte Sicherung wiederherstellen?", isPresented: $confirmRestore,
+                                        titleVisibility: .visible) {
+                        Button("Wiederherstellen", role: .destructive) { _ = sync.restoreLastBackup() }
+                        Button("Abbrechen", role: .cancel) {}
+                    } message: {
+                        Text("Favoriten, Verlauf, Fortschritt und Intro-Zeiten dieses Geräts werden auf den Stand der Sicherung gesetzt und gelten danach auch für deine anderen Geräte. Der jetzige Stand wird vorher gesichert.")
+                    }
             }
         } header: {
             Text("Synchronisierung")

@@ -14,6 +14,8 @@ final class WatchStatsStore {
     /// slug → genres / age rating (filled whenever a series page is loaded).
     private(set) var seriesMeta: [String: SeriesMeta] = [:]
     private(set) var resetAt: Date?
+    /// Set when this device kept its own statistics against a newer reset ("Dieses Gerät behalten").
+    @ObservationIgnored private(set) var restoredAt: Date?
 
     /// Increases with every change made on this device (the sync layer uses it to decide on writing).
     @ObservationIgnored private(set) var localRevision = 0
@@ -32,16 +34,18 @@ final class WatchStatsStore {
         var sessions: [WatchSession] = []
         var seriesMeta: [String: SeriesMeta] = [:]
         var resetAt: Date?
+        var restoredAt: Date?
 
         init() {}
 
-        enum CodingKeys: String, CodingKey { case sessions, seriesMeta, resetAt }
+        enum CodingKeys: String, CodingKey { case sessions, seriesMeta, resetAt, restoredAt }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             sessions = try c.decodeIfPresent([WatchSession].self, forKey: .sessions) ?? []
             seriesMeta = try c.decodeIfPresent([String: SeriesMeta].self, forKey: .seriesMeta) ?? [:]
             resetAt = try c.decodeIfPresent(Date.self, forKey: .resetAt)
+            restoredAt = try c.decodeIfPresent(Date.self, forKey: .restoredAt)
         }
     }
 
@@ -91,10 +95,11 @@ final class WatchStatsStore {
         guard let fileURL, let data = try? Data(contentsOf: fileURL),
               let snap = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         let merged = StatsMerge.merge([StatsState(sessions: snap.sessions, seriesMeta: snap.seriesMeta,
-                                                  resetAt: snap.resetAt)])
+                                                  resetAt: snap.resetAt, restoredAt: snap.restoredAt)])
         sessions = merged.sessions
         seriesMeta = merged.seriesMeta
         resetAt = merged.resetAt
+        restoredAt = snap.restoredAt
     }
 
     private func scheduleSave(notify: Bool) {
@@ -120,6 +125,7 @@ final class WatchStatsStore {
         snap.sessions = sessions
         snap.seriesMeta = seriesMeta
         snap.resetAt = resetAt
+        snap.restoredAt = restoredAt
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? data.write(to: fileURL, options: [.atomic])
     }
@@ -188,20 +194,39 @@ final class WatchStatsStore {
 
     /// Everything known locally (the sync layer merges it with the other devices' data).
     func exportState() -> StatsState {
-        StatsState(sessions: sessions, seriesMeta: seriesMeta, resetAt: resetAt)
+        StatsState(sessions: sessions, seriesMeta: seriesMeta, resetAt: resetAt, restoredAt: restoredAt)
     }
 
     /// What this device writes into its own sync file: only sessions that were recorded here.
     func exportOwnState() -> StatsState {
-        StatsState(sessions: sessions.filter { $0.deviceID == deviceID }, seriesMeta: seriesMeta, resetAt: resetAt)
+        StatsState(sessions: sessions.filter { $0.deviceID == deviceID }, seriesMeta: seriesMeta,
+                   resetAt: resetAt, restoredAt: restoredAt)
     }
 
     /// Replaces the local data with a merged state. Does not trigger `onChange`.
     func apply(merged: StatsState) {
+        // `restoredAt` belongs to this device only; whatever the merge reports is not adopted.
+        var merged = merged
+        merged.restoredAt = restoredAt
         guard merged != exportState() else { return }
         sessions = merged.sessions
         seriesMeta = merged.seriesMeta
         resetAt = merged.resetAt
         scheduleSave(notify: false)
+    }
+
+    /// "Dieses Gerät behalten" / backup restore: keeps (or restores) the given statistics and marks
+    /// them as newer than any reset known on the other devices, so that a remote reset cannot drop them.
+    /// - Parameter floor: newest `resetAt` seen elsewhere.
+    func assertLocal(restoring state: StatsState? = nil, floor: Date?) {
+        if let state {
+            sessions = state.sessions
+            seriesMeta = state.seriesMeta
+            resetAt = state.resetAt
+        }
+        let newest = [Date(), floor, resetAt].compactMap { $0 }.max() ?? Date()
+        restoredAt = newest.addingTimeInterval(1)
+        scheduleSave(notify: true)
+        flush()
     }
 }
