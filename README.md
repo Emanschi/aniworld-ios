@@ -50,7 +50,7 @@ Sideloading-Werkzeug, das sie mit deiner (kostenlosen) Apple-ID signiert.
 | Werkzeug | Läuft auf | So geht's |
 |---|---|---|
 | [AltStore](https://altstore.io) / [SideStore](https://sidestore.io) | iPhone (+ einmalig PC) | Quelle hinzufügen, AniWorld installieren. Updates und Signatur-Erneuerung laufen danach in der App. |
-| [Impactor](https://github.com/khcrysalis/Impactor) | Linux, Windows, macOS | iPhone per USB anschließen, IPA hineinziehen, mit Apple-ID anmelden. Unter Linux muss `usbmuxd` laufen. |
+| [Impactor](https://github.com/claration/impactor) | Linux, Windows, macOS | iPhone per USB anschließen, IPA hineinziehen, mit Apple-ID anmelden. Unter Linux muss `usbmuxd` laufen. |
 | [Sideloadly](https://sideloadly.io) | Windows, macOS | IPA hineinziehen, Apple-ID eingeben, *Start*. |
 | [TrollStore](https://github.com/opa334/TrollStore) | iPhone | IPA öffnen und installieren (nur auf unterstützten iOS-Versionen, keine 7-Tage-Grenze). |
 
@@ -59,6 +59,19 @@ AltStore/SideStore-Quelle:
 ```
 https://github.com/Emanschi/aniworld-ios/releases/latest/download/altstore-source.json
 ```
+
+<details>
+<summary><b>Schritt für Schritt mit Impactor</b></summary>
+
+1. Auf der [Release-Seite von Impactor](https://github.com/claration/impactor/releases/latest) die Datei
+   für dein System laden: Windows `Impactor-windows-x86_64-setup.exe`, macOS `Impactor-macos-universal.dmg`,
+   Linux `Impactor-linux-x86_64.appimage` (unter Linux muss zusätzlich `usbmuxd` laufen).
+2. `AniWorld.ipa` aus dem [neuesten Release](https://github.com/Emanschi/aniworld-ios/releases/latest) laden.
+3. iPhone per USB anschließen, entsperren und „Diesem Computer vertrauen“ bestätigen.
+4. Impactor öffnen, mit deiner Apple-ID anmelden (kostenlos reicht), die IPA ins Fenster ziehen, installieren.
+5. Beim ersten Mal noch Schritt 3 unten erledigen. Updates: einfach die neue IPA genauso installieren.
+
+</details>
 
 **3. Auf dem iPhone freigeben:**
 *Einstellungen → Allgemein → VPN & Geräteverwaltung* → deiner Apple-ID vertrauen. Ab iOS 16
